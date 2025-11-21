@@ -25,6 +25,16 @@ defmodule CLI do
             # On termine le programme: pas de nouveau prompt
             :ok
 
+          cmd === "echo" ->
+            IO.puts("")
+            loop()
+
+          String.starts_with?(cmd, "echo ") ->
+            # On recupère tout ce qui vient apres "echo "
+            args = String.replace_prefix(cmd, "echo ", "")
+            IO.puts(args)
+            loop()
+
           true ->
             # Tous les autres cas => commande invalide
             IO.puts("#{cmd}: command not found")
