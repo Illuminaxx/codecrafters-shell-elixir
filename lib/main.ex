@@ -35,6 +35,19 @@ defmodule CLI do
             IO.puts(args)
             loop()
 
+          # ---- type builtin ----
+          String.starts_with?(cmd, "type ") ->
+            arg = String.replace_prefix(cmd, "type ", "")
+            builtin? = arg in ["echo", "exit", "type"]
+
+            if builtin? do
+              IO.puts("#{arg} is a shell builtin")
+            else
+              IO.puts("#{arg}: not found")
+            end
+
+            loop()
+
           true ->
             # Tous les autres cas => commande invalide
             IO.puts("#{cmd}: command not found")
