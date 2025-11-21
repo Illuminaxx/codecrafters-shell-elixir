@@ -1,4 +1,6 @@
 defmodule CLI do
+  import Bitwise
+
   def main(_args) do
     loop()
   end
@@ -40,10 +42,15 @@ defmodule CLI do
             arg = String.replace_prefix(cmd, "type ", "")
             builtin? = arg in ["echo", "exit", "type"]
 
-            if builtin? do
-              IO.puts("#{arg} is a shell builtin")
-            else
-              IO.puts("#{arg}: not found")
+            cond do
+              builtin? ->
+                IO.puts("#{arg} is a shell builtin")
+
+              exec = find_executable(arg) ->
+                IO.puts("#{arg} is #{exec}")
+
+              true ->
+                IO.puts("#{arg}: not found")
             end
 
             loop()
@@ -54,5 +61,31 @@ defmodule CLI do
             loop()
         end
     end
+  end
+
+  # --- Recherche PATH minimaliste ---
+  defp find_executable(cmd) do
+    path = System.get_env("PATH") || ""
+    dirs = String.split(path, ":")
+
+    Enum.find_value(dirs, fn dir ->
+      candidate = Path.join(dir, cmd)
+
+      if File.exists?(candidate) do
+        case File.stat(candidate) do
+          {:ok, %File.Stat{mode: mode}} ->
+            if (mode &&& 0o111) != 0 do
+              candidate
+            else
+              false
+            end
+
+          _ ->
+            false
+        end
+      else
+        false
+      end
+    end)
   end
 end
