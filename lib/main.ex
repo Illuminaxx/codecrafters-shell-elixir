@@ -16,12 +16,20 @@ defmodule CLI do
       line ->
         cmd = String.trim(line)
 
-        # Dans ce stage 2 : TOUT est invalid command
-        unless cmd == "" do
-          IO.puts("#{cmd}: command not found")
-        end
+        cond do
+          cmd === "" ->
+            # Rien tapé, on relance juste la boucle
+            loop()
 
-        loop()
+          cmd === "exit" ->
+            # On termine le programme: pas de nouveau prompt
+            :ok
+
+          true ->
+            # Tous les autres cas => commande invalide
+            IO.puts("#{cmd}: command not found")
+            loop()
+        end
     end
   end
 end
