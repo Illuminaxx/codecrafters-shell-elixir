@@ -47,7 +47,20 @@ defmodule CLI do
           String.starts_with?(cmd, "cd") ->
             path = String.replace_prefix(cmd, "cd ", "")
 
-            case File.cd(path) do
+            # ~ remplacer par le repertoir HOME
+            expanded_pth = cond do
+              path === "~" ->
+                System.get_env("HOME") || "~"
+
+              String.starts_with?(path, "~/") ->
+                home = System.get_env("HOME") || "~"
+                String.replace_prefix(path, "~", home)
+
+              true ->
+                path
+            end
+
+            case File.cd(expanded_pth) do
               :ok ->
                 loop()
 
