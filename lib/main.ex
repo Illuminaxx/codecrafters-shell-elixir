@@ -37,15 +37,29 @@ defmodule CLI do
             IO.puts(args)
             loop()
 
-          # --- --- #
+          # --- pwd builting --- #
           cmd === "pwd" ->
             IO.puts(File.cwd!())
             loop()
 
+
+          # --- cd builtin --- #
+          String.starts_with?(cmd, "cd") ->
+            path = String.replace_prefix(cmd, "cd ", "")
+
+            case File.cd(path) do
+              :ok ->
+                loop()
+
+              {:error, _reason} ->
+                IO.puts("cd: #{path}: No such file or directory")
+                loop()
+            end
+
           # ---- type builtin ----
           String.starts_with?(cmd, "type ") ->
             arg = String.replace_prefix(cmd, "type ", "")
-            builtin? = arg in ["echo", "exit", "type", "pwd"]
+            builtin? = arg in ["echo", "exit", "type", "pwd", "cd"]
 
             cond do
               builtin? ->
