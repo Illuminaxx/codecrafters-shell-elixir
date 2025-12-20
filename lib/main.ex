@@ -171,12 +171,12 @@ defmodule CLI do
     end
   end
 
-  # --- Parser pour gérer les single quotes ---
+# --- Parser pour gérer les single et double quotes ---
 defp parse_arguments(input) do
-  parse_args(input, "", [], false)
+  parse_args(input, "", [], :none)
 end
 
-defp parse_args("", current, acc, _in_quotes) do
+defp parse_args("", current, acc, _quote_type) do
   # Fin de l'input
   if current != "" do
     Enum.reverse([current | acc])
@@ -185,34 +185,48 @@ defp parse_args("", current, acc, _in_quotes) do
   end
 end
 
-defp parse_args("'" <> rest, current, acc, false) do
-  # Début d'une quote
-  parse_args(rest, current, acc, true)
+# Début d'une single quote (si pas déjà dans des quotes)
+defp parse_args("'" <> rest, current, acc, :none) do
+  parse_args(rest, current, acc, :single)
 end
 
-defp parse_args("'" <> rest, current, acc, true) do
-  # Fin d'une quote
-  parse_args(rest, current, acc, false)
+# Fin d'une single quote
+defp parse_args("'" <> rest, current, acc, :single) do
+  parse_args(rest, current, acc, :none)
 end
 
-defp parse_args(<<char::utf8, rest::binary>>, current, acc, true) do
-  # Dans une quote : on ajoute tous les caractères (même les espaces)
-  parse_args(rest, current <> <<char::utf8>>, acc, true)
+# Début d'une double quote (si pas déjà dans des quotes)
+defp parse_args("\"" <> rest, current, acc, :none) do
+  parse_args(rest, current, acc, :double)
 end
 
-defp parse_args(" " <> rest, "", acc, false) do
-  # Espace en dehors des quotes avec current vide : on ignore
-  parse_args(rest, "", acc, false)
+# Fin d'une double quote
+defp parse_args("\"" <> rest, current, acc, :double) do
+  parse_args(rest, current, acc, :none)
 end
 
-defp parse_args(" " <> rest, current, acc, false) do
-  # Espace en dehors des quotes : on termine l'argument actuel
-  parse_args(rest, "", [current | acc], false)
+# Caractère quelconque DANS des single quotes
+defp parse_args(<<char::utf8, rest::binary>>, current, acc, :single) do
+  parse_args(rest, current <> <<char::utf8>>, acc, :single)
 end
 
-defp parse_args(<<char::utf8, rest::binary>>, current, acc, false) do
-  # Caractère normal en dehors des quotes
-  parse_args(rest, current <> <<char::utf8>>, acc, false)
+# Caractère quelconque DANS des double quotes
+defp parse_args(<<char::utf8, rest::binary>>, current, acc, :double) do
+  parse_args(rest, current <> <<char::utf8>>, acc, :double)
 end
 
+# Espace HORS des quotes avec current vide : on ignore
+defp parse_args(" " <> rest, "", acc, :none) do
+  parse_args(rest, "", acc, :none)
+end
+
+# Espace HORS des quotes : on termine l'argument actuel
+defp parse_args(" " <> rest, current, acc, :none) do
+  parse_args(rest, "", [current | acc], :none)
+end
+
+# Caractère normal HORS des quotes
+defp parse_args(<<char::utf8, rest::binary>>, current, acc, :none) do
+  parse_args(rest, current <> <<char::utf8>>, acc, :none)
+end
 end
