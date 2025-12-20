@@ -205,7 +205,20 @@ defp parse_args("\"" <> rest, current, acc, :double) do
   parse_args(rest, current, acc, :none)
 end
 
-# NOUVEAU : Backslash HORS des quotes (échappement)
+# NOUVEAU : Backslash dans DOUBLE quotes - échappe " et \
+defp parse_args("\\" <> <<char::utf8, rest::binary>>, current, acc, :double) when char in [?", ?\\] do
+  # char in [?", ?\\] signifie char == ?" (34) ou char == ?\\ (92)
+  # On ajoute le caractère échappé sans le backslash
+  parse_args(rest, current <> <<char::utf8>>, acc, :double)
+end
+
+# NOUVEAU : Backslash dans DOUBLE quotes - pour les autres caractères, le backslash reste littéral
+defp parse_args("\\" <> <<char::utf8, rest::binary>>, current, acc, :double) do
+  # Pour \n, \t, etc. : on garde le backslash ET le caractère
+  parse_args(rest, current <> "\\" <> <<char::utf8>>, acc, :double)
+end
+
+# Backslash HORS des quotes (échappement)
 defp parse_args("\\" <> <<char::utf8, rest::binary>>, current, acc, :none) do
   # Le backslash échappe le caractère suivant
   # On ajoute le caractère échappé (sans le backslash) à current
