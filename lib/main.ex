@@ -37,10 +37,15 @@ defmodule CLI do
             IO.puts(args)
             loop()
 
+          # --- --- #
+          cmd === "pwd" ->
+            IO.puts(File.cwd!())
+            loop()
+
           # ---- type builtin ----
           String.starts_with?(cmd, "type ") ->
             arg = String.replace_prefix(cmd, "type ", "")
-            builtin? = arg in ["echo", "exit", "type"]
+            builtin? = arg in ["echo", "exit", "type", "pwd"]
 
             cond do
               builtin? ->
@@ -61,12 +66,12 @@ defmodule CLI do
             command_name = hd(parts)
             args = tl(parts)
 
-            # Utiliser :erlang.open_port directement avec {:arg0, ...}
+
             port =
               :erlang.open_port(
                 {:spawn_executable, to_charlist(exec)},
                 [
-                  # ← Ceci REMPLACE argv[0]
+
                   {:arg0, to_charlist(command_name)},
                   {:args, Enum.map(args, &to_charlist/1)},
                   :binary,
