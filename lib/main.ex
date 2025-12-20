@@ -171,7 +171,7 @@ defmodule CLI do
     end
   end
 
-# --- Parser pour gérer les single et double quotes ---
+# --- Parser pour gérer les single et double quotes + backslash ---
 defp parse_arguments(input) do
   parse_args(input, "", [], :none)
 end
@@ -203,6 +203,13 @@ end
 # Fin d'une double quote
 defp parse_args("\"" <> rest, current, acc, :double) do
   parse_args(rest, current, acc, :none)
+end
+
+# NOUVEAU : Backslash HORS des quotes (échappement)
+defp parse_args("\\" <> <<char::utf8, rest::binary>>, current, acc, :none) do
+  # Le backslash échappe le caractère suivant
+  # On ajoute le caractère échappé (sans le backslash) à current
+  parse_args(rest, current <> <<char::utf8>>, acc, :none)
 end
 
 # Caractère quelconque DANS des single quotes
