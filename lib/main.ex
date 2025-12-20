@@ -55,6 +55,29 @@ defmodule CLI do
 
             loop()
 
+          # --- execution programme externe ---
+          exec = find_executable(hd(String.split(cmd, " "))) ->
+            parts = String.split(cmd, " ")
+            command_name = hd(parts)
+            args = tl(parts)
+
+            # Utiliser :erlang.open_port directement avec {:arg0, ...}
+            port =
+              :erlang.open_port(
+                {:spawn_executable, to_charlist(exec)},
+                [
+                  # ← Ceci REMPLACE argv[0]
+                  {:arg0, to_charlist(command_name)},
+                  {:args, Enum.map(args, &to_charlist/1)},
+                  :binary,
+                  :exit_status,
+                  {:line, 1024}
+                ]
+              )
+
+            receive_port_opt(port)
+            loop()
+
           true ->
             # Tous les autres cas => commande invalide
             IO.puts("#{cmd}: command not found")
@@ -87,5 +110,17 @@ defmodule CLI do
         false
       end
     end)
+  end
+
+  # --- Recevoir l'output d'un port --- #
+  defp receive_port_opt(port) do
+    receive do
+      {^port, {:data, {:eol, line}}} ->
+        IO.puts(line)
+        receive_port_opt(port)
+
+      {^port, {:exit_status, _status}} ->
+        :ok
+    end
   end
 end
