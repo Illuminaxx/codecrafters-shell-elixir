@@ -33,9 +33,13 @@ defmodule CLI do
 
           String.starts_with?(cmd, "echo ") ->
             # On recupère tout ce qui vient apres "echo "
-            args = String.replace_prefix(cmd, "echo ", "")
-            IO.puts(args)
+            input = String.replace_prefix(cmd, "echo ", "")
+            args = parse_arguments(input)
+
+            output = Enum.join(args, " ")
+            IO.puts(output)
             loop()
+
 
           # --- pwd builting --- #
           cmd === "pwd" ->
@@ -87,33 +91,44 @@ defmodule CLI do
 
             loop()
 
-          # --- execution programme externe ---
-          exec = find_executable(hd(String.split(cmd, " "))) ->
-            parts = String.split(cmd, " ")
-            command_name = hd(parts)
-            args = tl(parts)
+          # --- execution programme externe --- #
+            true ->
+  # Parser la commande en tenant compte des quotes
+  parts = parse_arguments(cmd)
 
+  if parts == [] do
+    # Rien à faire
+    loop()
+  else
+    command_name = hd(parts)
 
-            port =
-              :erlang.open_port(
-                {:spawn_executable, to_charlist(exec)},
-                [
+    # Chercher l'exécutable
+    case find_executable(command_name) do
+      nil ->
+        # Pas trouvé
+        IO.puts("#{cmd}: command not found")
+        loop()
 
-                  {:arg0, to_charlist(command_name)},
-                  {:args, Enum.map(args, &to_charlist/1)},
-                  :binary,
-                  :exit_status,
-                  {:line, 1024}
-                ]
-              )
+      exec ->
+        # Trouvé ! On l'exécute
+        args = tl(parts)
 
-            receive_port_opt(port)
-            loop()
+        port =
+          :erlang.open_port(
+            {:spawn_executable, to_charlist(exec)},
+            [
+              {:arg0, to_charlist(command_name)},
+              {:args, Enum.map(args, &to_charlist/1)},
+              :binary,
+              :exit_status,
+              {:line, 1024}
+            ]
+          )
 
-          true ->
-            # Tous les autres cas => commande invalide
-            IO.puts("#{cmd}: command not found")
-            loop()
+        receive_port_opt(port)
+        loop()
+    end
+  end
         end
     end
   end
@@ -155,4 +170,49 @@ defmodule CLI do
         :ok
     end
   end
+
+  # --- Parser pour gérer les single quotes ---
+defp parse_arguments(input) do
+  parse_args(input, "", [], false)
+end
+
+defp parse_args("", current, acc, _in_quotes) do
+  # Fin de l'input
+  if current != "" do
+    Enum.reverse([current | acc])
+  else
+    Enum.reverse(acc)
+  end
+end
+
+defp parse_args("'" <> rest, current, acc, false) do
+  # Début d'une quote
+  parse_args(rest, current, acc, true)
+end
+
+defp parse_args("'" <> rest, current, acc, true) do
+  # Fin d'une quote
+  parse_args(rest, current, acc, false)
+end
+
+defp parse_args(<<char::utf8, rest::binary>>, current, acc, true) do
+  # Dans une quote : on ajoute tous les caractères (même les espaces)
+  parse_args(rest, current <> <<char::utf8>>, acc, true)
+end
+
+defp parse_args(" " <> rest, "", acc, false) do
+  # Espace en dehors des quotes avec current vide : on ignore
+  parse_args(rest, "", acc, false)
+end
+
+defp parse_args(" " <> rest, current, acc, false) do
+  # Espace en dehors des quotes : on termine l'argument actuel
+  parse_args(rest, "", [current | acc], false)
+end
+
+defp parse_args(<<char::utf8, rest::binary>>, current, acc, false) do
+  # Caractère normal en dehors des quotes
+  parse_args(rest, current <> <<char::utf8>>, acc, false)
+end
+
 end
