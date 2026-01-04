@@ -16,11 +16,11 @@ defmodule CLI do
 
   defp loop(current, history, hist_index, :normal, from_history) do
     case IO.getn("", 1) do
-      "\e" -> loop(current, history, hist_index, :esc, from_history)
+      "\e" ->
+        loop(current, history, hist_index, :esc, from_history)
 
       "\n" ->
         cmd = String.trim(current)
-
         new_history = if cmd == "", do: history, else: history ++ [cmd]
         unless cmd == "", do: handle_command(cmd, new_history)
 
@@ -226,37 +226,51 @@ defmodule CLI do
     end)
   end
 
-  # ✅ Nouvelle implémentation du parser qui gère les quotes simples
+  # ============================
+  # ARGUMENT PARSER
+  # Supports:
+  # - single quotes
+  # - double quotes
+  # - concatenation
+  # ============================
   defp parse_arguments(input) do
-    do_parse_arguments(String.trim(input), [], "", :normal)
+    do_parse(String.trim(input), [], "", :normal)
   end
 
-  defp do_parse_arguments(<<>>, acc, current, :normal) do
-    acc = if current != "", do: acc ++ [current], else: acc
-    acc
+  defp do_parse(<<>>, acc, current, _mode) do
+    if current == "", do: acc, else: acc ++ [current]
   end
 
-  defp do_parse_arguments(<<"'", rest::binary>>, acc, current, :normal) do
-    do_parse_arguments(rest, acc, current, :in_single_quote)
-  end
+  # Single quotes
+  defp do_parse(<<"'", rest::binary>>, acc, current, :normal),
+    do: do_parse(rest, acc, current, :single)
 
-  defp do_parse_arguments(<<"'", rest::binary>>, acc, current, :in_single_quote) do
-    do_parse_arguments(rest, acc, current, :normal)
-  end
+  defp do_parse(<<"'", rest::binary>>, acc, current, :single),
+    do: do_parse(rest, acc, current, :normal)
 
-  defp do_parse_arguments(<<char, rest::binary>>, acc, current, :in_single_quote) do
-    do_parse_arguments(rest, acc, current <> <<char>>, :in_single_quote)
-  end
+  defp do_parse(<<c, rest::binary>>, acc, current, :single),
+    do: do_parse(rest, acc, current <> <<c>>, :single)
 
-  defp do_parse_arguments(<<" ", rest::binary>>, acc, current, :normal) do
+  # Double quotes
+  defp do_parse(<<"\"", rest::binary>>, acc, current, :normal),
+    do: do_parse(rest, acc, current, :double)
+
+  defp do_parse(<<"\"", rest::binary>>, acc, current, :double),
+    do: do_parse(rest, acc, current, :normal)
+
+  defp do_parse(<<c, rest::binary>>, acc, current, :double),
+    do: do_parse(rest, acc, current <> <<c>>, :double)
+
+  # Spaces
+  defp do_parse(<<" ", rest::binary>>, acc, current, :normal) do
     if current == "" do
-      do_parse_arguments(rest, acc, "", :normal)
+      do_parse(rest, acc, "", :normal)
     else
-      do_parse_arguments(rest, acc ++ [current], "", :normal)
+      do_parse(rest, acc ++ [current], "", :normal)
     end
   end
 
-  defp do_parse_arguments(<<char, rest::binary>>, acc, current, :normal) do
-    do_parse_arguments(rest, acc, current <> <<char>>, :normal)
-  end
+  # Normal characters
+  defp do_parse(<<c, rest::binary>>, acc, current, :normal),
+    do: do_parse(rest, acc, current <> <<c>>, :normal)
 end
