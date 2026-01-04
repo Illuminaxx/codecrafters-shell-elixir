@@ -226,10 +226,6 @@ defmodule CLI do
 
   # ============================
   # ARGUMENT PARSER
-  # Supports:
-  # - single quotes
-  # - double quotes
-  # - backslash outside quotes
   # ============================
   defp parse_arguments(input) do
     do_parse(String.trim(input), [], "", :normal)
@@ -239,12 +235,12 @@ defmodule CLI do
     if current == "", do: acc, else: acc ++ [current]
   end
 
-  # Backslash (ONLY in normal mode)
+  # Backslash (normal mode)
   defp do_parse(<<"\\" , c, rest::binary>>, acc, current, :normal) do
     do_parse(rest, acc, current <> <<c>>, :normal)
   end
 
-  # Single quotes
+  # Single quotes (everything literal)
   defp do_parse(<<"'", rest::binary>>, acc, current, :normal),
     do: do_parse(rest, acc, current, :single)
 
@@ -254,17 +250,29 @@ defmodule CLI do
   defp do_parse(<<c, rest::binary>>, acc, current, :single),
     do: do_parse(rest, acc, current <> <<c>>, :single)
 
-  # Double quotes
+  # Double quotes start / end
   defp do_parse(<<"\"", rest::binary>>, acc, current, :normal),
     do: do_parse(rest, acc, current, :double)
 
   defp do_parse(<<"\"", rest::binary>>, acc, current, :double),
     do: do_parse(rest, acc, current, :normal)
 
-  defp do_parse(<<c, rest::binary>>, acc, current, :double),
-    do: do_parse(rest, acc, current <> <<c>>, :double)
+  # Escaping inside double quotes: \" and \\
+  defp do_parse(<<"\\" , char, rest::binary>>, acc, current, :double)
+       when char in [?\", ?\\] do
+    do_parse(rest, acc, current <> <<char>>, :double)
+  end
 
-  # Spaces
+  # Other backslashes in double quotes are literal
+  defp do_parse(<<"\\" , char, rest::binary>>, acc, current, :double) do
+    do_parse(rest, acc, current <> <<?\\, char>>, :double)
+  end
+
+  # Characters inside double quotes
+  defp do_parse(<<char, rest::binary>>, acc, current, :double),
+    do: do_parse(rest, acc, current <> <<char>>, :double)
+
+  # Spaces (normal mode only)
   defp do_parse(<<" ", rest::binary>>, acc, current, :normal) do
     if current == "" do
       do_parse(rest, acc, "", :normal)
@@ -274,6 +282,6 @@ defmodule CLI do
   end
 
   # Normal characters
-  defp do_parse(<<c, rest::binary>>, acc, current, :normal),
-    do: do_parse(rest, acc, current <> <<c>>, :normal)
+  defp do_parse(<<char, rest::binary>>, acc, current, :normal),
+    do: do_parse(rest, acc, current <> <<char>>, :normal)
 end
