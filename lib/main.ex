@@ -16,8 +16,7 @@ defmodule CLI do
 
   defp loop(current, history, hist_index, :normal, from_history) do
     case IO.getn("", 1) do
-      "\e" ->
-        loop(current, history, hist_index, :esc, from_history)
+      "\e" -> loop(current, history, hist_index, :esc, from_history)
 
       "\n" ->
         cmd = String.trim(current)
@@ -227,5 +226,37 @@ defmodule CLI do
     end)
   end
 
-  defp parse_arguments(input), do: String.split(input, " ", trim: true)
+  # ✅ Nouvelle implémentation du parser qui gère les quotes simples
+  defp parse_arguments(input) do
+    do_parse_arguments(String.trim(input), [], "", :normal)
+  end
+
+  defp do_parse_arguments(<<>>, acc, current, :normal) do
+    acc = if current != "", do: acc ++ [current], else: acc
+    acc
+  end
+
+  defp do_parse_arguments(<<"'", rest::binary>>, acc, current, :normal) do
+    do_parse_arguments(rest, acc, current, :in_single_quote)
+  end
+
+  defp do_parse_arguments(<<"'", rest::binary>>, acc, current, :in_single_quote) do
+    do_parse_arguments(rest, acc, current, :normal)
+  end
+
+  defp do_parse_arguments(<<char, rest::binary>>, acc, current, :in_single_quote) do
+    do_parse_arguments(rest, acc, current <> <<char>>, :in_single_quote)
+  end
+
+  defp do_parse_arguments(<<" ", rest::binary>>, acc, current, :normal) do
+    if current == "" do
+      do_parse_arguments(rest, acc, "", :normal)
+    else
+      do_parse_arguments(rest, acc ++ [current], "", :normal)
+    end
+  end
+
+  defp do_parse_arguments(<<char, rest::binary>>, acc, current, :normal) do
+    do_parse_arguments(rest, acc, current <> <<char>>, :normal)
+  end
 end
