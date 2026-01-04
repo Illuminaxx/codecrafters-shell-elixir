@@ -1,141 +1,52 @@
 defmodule CLI do
   import Bitwise
 
-  @builtins ["echo", "exit", "type", "pwd", "cd", "history"]
-
   def main(_args) do
-    :io.setopts(:standard_io, [
-      binary: true,
-      encoding: :latin1,
-      echo: false
-    ])
-
+    :io.setopts(:standard_io, binary: true, encoding: :latin1, echo: false)
     IO.write("$ ")
-    loop("", [], 0, :normal, false)
+    loop("")
   end
 
-  defp loop(current, history, hist_index, :normal, from_history) do
+  defp loop(current) do
     case IO.getn("", 1) do
-      "\e" -> loop(current, history, hist_index, :esc, from_history)
-
       "\n" ->
         cmd = String.trim(current)
-        new_history = if cmd == "", do: history, else: history ++ [cmd]
-        unless cmd == "", do: handle_command(cmd, new_history)
+        if cmd != "", do: handle_command(cmd)
+        IO.write("$ ")
+        loop("")
 
-        if cmd != "exit" do
-          IO.write("$ ")
-          loop("", new_history, 0, :normal, false)
-        end
-
-      <<char>> ->
-        loop(current <> <<char>>, history, hist_index, :normal, false)
+      <<c>> ->
+        loop(current <> <<c>>)
 
       _ ->
-        loop(current, history, hist_index, :normal, from_history)
+        loop(current)
     end
   end
 
-  defp loop(current, history, hist_index, :esc, from_history) do
-    case IO.getn("", 1) do
-      "[" -> loop(current, history, hist_index, :bracket, from_history)
-      _ -> loop(current, history, hist_index, :normal, from_history)
-    end
-  end
+  # =========================
+  # COMMAND DISPATCH
+  # =========================
+  defp handle_command("exit"), do: :ok
+  defp handle_command("pwd"), do: IO.puts(File.cwd!())
 
-  defp loop(current, history, hist_index, :bracket, from_history) do
-    case IO.getn("", 1) do
-      "A" -> recall_up(history, hist_index)
-      "B" -> recall_down(history, hist_index)
-      _ -> loop(current, history, hist_index, :normal, from_history)
-    end
-  end
-
-  defp recall_up(history, hist_index) do
-    max = length(history)
-    new_index = min(hist_index + 1, max)
-
-    recalled =
-      if new_index == 0 do
-        ""
-      else
-        Enum.at(history, max - new_index) || ""
-      end
-
-    IO.write("\r\e[2K$ ")
-    IO.write(recalled)
-    loop(recalled, history, new_index, :normal, true)
-  end
-
-  defp recall_down(history, hist_index) do
-    new_index = max(hist_index - 1, 0)
-
-    recalled =
-      if new_index == 0 do
-        ""
-      else
-        Enum.at(history, length(history) - new_index) || ""
-      end
-
-    IO.write("\r\e[2K$ ")
-    IO.write(recalled)
-    loop(recalled, history, new_index, :normal, true)
-  end
-
-  defp handle_command("", _), do: :ok
-
-  defp handle_command(cmd, history) do
+  defp handle_command(cmd) do
     cond do
-      String.contains?(cmd, "|") -> handle_pipeline(cmd)
-      cmd == "exit" -> :ok
-      cmd == "history" -> handle_history(history, nil)
-
-      String.starts_with?(cmd, "history ") ->
-        case Integer.parse(String.trim_leading(cmd, "history ")) do
-          {n, ""} -> handle_history(history, n)
-          _ -> handle_history(history, nil)
-        end
-
-      String.starts_with?(cmd, "echo ") -> handle_echo_command(cmd)
-      cmd == "echo" -> IO.puts("")
-      cmd == "pwd" -> IO.puts(File.cwd!())
-      String.starts_with?(cmd, "cd ") -> handle_cd_command(cmd)
-      String.starts_with?(cmd, "type ") -> handle_type_command(cmd)
-      true -> handle_external_command(cmd)
+      cmd == "cd" -> handle_cd("~")
+      String.starts_with?(cmd, "cd ") -> handle_cd(String.trim_leading(cmd, "cd "))
+      String.starts_with?(cmd, "echo") -> handle_echo(cmd)
+      true -> handle_external(cmd)
     end
   end
 
-  defp handle_history(history, nil) do
-    history
-    |> Enum.with_index(1)
-    |> Enum.each(fn {cmd, idx} ->
-      IO.puts("    #{idx}  #{cmd}")
-    end)
-  end
-
-  defp handle_history(history, n) when is_integer(n) and n > 0 do
-    history
-    |> Enum.take(-n)
-    |> Enum.with_index(length(history) - n + 1)
-    |> Enum.each(fn {cmd, idx} ->
-      IO.puts("    #{idx}  #{cmd}")
-    end)
-  end
-
-  defp handle_echo_command(cmd) do
-    input = String.replace_prefix(cmd, "echo ", "")
-    args = parse_arguments(input)
-    IO.puts(Enum.join(args, " "))
-  end
-
-  defp handle_cd_command(cmd) do
-    path = String.replace_prefix(cmd, "cd ", "") |> String.trim()
-
+  # =========================
+  # BUILTINS
+  # =========================
+  defp handle_cd(path) do
     resolved =
       cond do
-        path == "~" -> System.get_env("HOME") || "~"
+        path == "~" -> System.get_env("HOME")
         String.starts_with?(path, "~/") ->
-          String.replace_prefix(path, "~", System.get_env("HOME") || "~")
+          String.replace_prefix(path, "~", System.get_env("HOME"))
         true -> path
       end
 
@@ -145,70 +56,74 @@ defmodule CLI do
     end
   end
 
-  defp handle_type_command(cmd) do
-    arg = String.replace_prefix(cmd, "type ", "")
+defp handle_echo(cmd) do
+  {raw_args, outfile} =
+    cmd
+    |> String.replace_prefix("echo", "")
+    |> parse_with_redirection()
 
-    cond do
-      arg in @builtins -> IO.puts("#{arg} is a shell builtin")
-      exec = find_executable(arg) -> IO.puts("#{arg} is #{exec}")
-      true -> IO.puts("#{arg}: not found")
-    end
-  end
+  args = parse_arguments(raw_args)   # 👈 AJOUT
 
-  defp handle_pipeline(cmd) do
-    port =
-      Port.open(
-        {:spawn, ~c"sh -c '#{escape_single_quotes(cmd)}'"},
-        [:binary, :exit_status, {:line, 4096}]
-      )
+  write_output(Enum.join(args, " "), outfile)
+end
 
-    receive_output(port)
-  end
-
-  defp handle_external_command(cmd) do
-    parts = parse_arguments(cmd)
+  # =========================
+  # EXTERNAL COMMANDS
+  # =========================
+  defp handle_external(cmd) do
+    {cmd_part, outfile} = parse_with_redirection(cmd)
+    parts = parse_arguments(cmd_part)
 
     case parts do
       [] -> :ok
-      [cmd | args] ->
-        case find_executable(cmd) do
-          nil -> IO.puts("#{cmd}: command not found")
+      [exe | args] ->
+        case find_executable(exe) do
+          nil ->
+            IO.puts("#{exe}: command not found")
 
-          exec ->
+          path ->
             port =
-              :erlang.open_port(
-                {:spawn_executable, to_charlist(exec)},
+              Port.open(
+                {:spawn_executable, to_charlist(path)},
                 [
-                  {:arg0, to_charlist(cmd)},
+                  {:arg0, to_charlist(exe)},
                   {:args, Enum.map(args, &to_charlist/1)},
                   :binary,
-                  :exit_status,
-                  {:line, 1024}
+                  :exit_status
                 ]
               )
 
-            receive_output(port)
+            collect_output(port, outfile, "")
         end
     end
   end
 
-  defp receive_output(port) do
+  defp collect_output(port, outfile, acc) do
     receive do
-      {^port, {:data, {:eol, line}}} ->
-        IO.puts(line)
-        receive_output(port)
-
-      {^port, {:data, {:noeol, data}}} ->
-        IO.write(data)
-        receive_output(port)
+      {^port, {:data, data}} ->
+        collect_output(port, outfile, acc <> data)
 
       {^port, {:exit_status, _}} ->
-        :ok
+        write_output(String.trim_trailing(acc), outfile)
     end
   end
 
-  defp escape_single_quotes(str), do: String.replace(str, "'", "'\\''")
+  # =========================
+  # REDIRECTION
+  # =========================
+  defp parse_with_redirection(cmd) do
+    case Regex.run(~r/(.*?)(?:\s+1?>\s*|\s+>\s*)(\S+)/, cmd) do
+      [_, left, file] -> {left, file}
+      _ -> {cmd, nil}
+    end
+  end
 
+  defp write_output(text, nil), do: IO.puts(text)
+  defp write_output(text, file), do: File.write!(file, text <> "\n")
+
+  # =========================
+  # EXECUTABLE LOOKUP
+  # =========================
   defp find_executable(cmd) do
     System.get_env("PATH", "")
     |> String.split(":")
@@ -224,64 +139,49 @@ defmodule CLI do
     end)
   end
 
-  # ============================
+  # =========================
   # ARGUMENT PARSER
-  # ============================
-  defp parse_arguments(input) do
-    do_parse(String.trim(input), [], "", :normal)
-  end
+  # =========================
+  defp parse_arguments(input), do: do_parse(String.trim(input), [], "", :normal)
 
-  defp do_parse(<<>>, acc, current, _mode) do
-    if current == "", do: acc, else: acc ++ [current]
-  end
+  defp do_parse(<<>>, acc, current, _),
+    do: (if current == "", do: acc, else: acc ++ [current])
 
-  # Backslash (normal mode)
-  defp do_parse(<<"\\" , c, rest::binary>>, acc, current, :normal) do
-    do_parse(rest, acc, current <> <<c>>, :normal)
-  end
+  defp do_parse(<<"\\" , c, rest::binary>>, acc, cur, :normal),
+    do: do_parse(rest, acc, cur <> <<c>>, :normal)
 
-  # Single quotes (everything literal)
-  defp do_parse(<<"'", rest::binary>>, acc, current, :normal),
-    do: do_parse(rest, acc, current, :single)
+  defp do_parse(<<"'", rest::binary>>, acc, cur, :normal),
+    do: do_parse(rest, acc, cur, :single)
 
-  defp do_parse(<<"'", rest::binary>>, acc, current, :single),
-    do: do_parse(rest, acc, current, :normal)
+  defp do_parse(<<"'", rest::binary>>, acc, cur, :single),
+    do: do_parse(rest, acc, cur, :normal)
 
-  defp do_parse(<<c, rest::binary>>, acc, current, :single),
-    do: do_parse(rest, acc, current <> <<c>>, :single)
+  defp do_parse(<<c, rest::binary>>, acc, cur, :single),
+    do: do_parse(rest, acc, cur <> <<c>>, :single)
 
-  # Double quotes start / end
-  defp do_parse(<<"\"", rest::binary>>, acc, current, :normal),
-    do: do_parse(rest, acc, current, :double)
+  defp do_parse(<<"\"", rest::binary>>, acc, cur, :normal),
+    do: do_parse(rest, acc, cur, :double)
 
-  defp do_parse(<<"\"", rest::binary>>, acc, current, :double),
-    do: do_parse(rest, acc, current, :normal)
+  defp do_parse(<<"\"", rest::binary>>, acc, cur, :double),
+    do: do_parse(rest, acc, cur, :normal)
 
-  # Escaping inside double quotes: \" and \\
-  defp do_parse(<<"\\" , char, rest::binary>>, acc, current, :double)
-       when char in [?\", ?\\] do
-    do_parse(rest, acc, current <> <<char>>, :double)
-  end
+  defp do_parse(<<"\\" , c, rest::binary>>, acc, cur, :double) when c in [?\", ?\\],
+    do: do_parse(rest, acc, cur <> <<c>>, :double)
 
-  # Other backslashes in double quotes are literal
-  defp do_parse(<<"\\" , char, rest::binary>>, acc, current, :double) do
-    do_parse(rest, acc, current <> <<?\\, char>>, :double)
-  end
+  defp do_parse(<<"\\" , c, rest::binary>>, acc, cur, :double),
+    do: do_parse(rest, acc, cur <> <<?\\, c>>, :double)
 
-  # Characters inside double quotes
-  defp do_parse(<<char, rest::binary>>, acc, current, :double),
-    do: do_parse(rest, acc, current <> <<char>>, :double)
+  defp do_parse(<<c, rest::binary>>, acc, cur, :double),
+    do: do_parse(rest, acc, cur <> <<c>>, :double)
 
-  # Spaces (normal mode only)
-  defp do_parse(<<" ", rest::binary>>, acc, current, :normal) do
-    if current == "" do
+  defp do_parse(<<" ", rest::binary>>, acc, cur, :normal) do
+    if cur == "" do
       do_parse(rest, acc, "", :normal)
     else
-      do_parse(rest, acc ++ [current], "", :normal)
+      do_parse(rest, acc ++ [cur], "", :normal)
     end
   end
 
-  # Normal characters
-  defp do_parse(<<char, rest::binary>>, acc, current, :normal),
-    do: do_parse(rest, acc, current <> <<char>>, :normal)
+  defp do_parse(<<c, rest::binary>>, acc, cur, :normal),
+    do: do_parse(rest, acc, cur <> <<c>>, :normal)
 end
