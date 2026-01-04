@@ -16,8 +16,7 @@ defmodule CLI do
 
   defp loop(current, history, hist_index, :normal, from_history) do
     case IO.getn("", 1) do
-      "\e" ->
-        loop(current, history, hist_index, :esc, from_history)
+      "\e" -> loop(current, history, hist_index, :esc, from_history)
 
       "\n" ->
         cmd = String.trim(current)
@@ -173,8 +172,7 @@ defmodule CLI do
       [] -> :ok
       [cmd | args] ->
         case find_executable(cmd) do
-          nil ->
-            IO.puts("#{cmd}: command not found")
+          nil -> IO.puts("#{cmd}: command not found")
 
           exec ->
             port =
@@ -231,7 +229,7 @@ defmodule CLI do
   # Supports:
   # - single quotes
   # - double quotes
-  # - concatenation
+  # - backslash outside quotes
   # ============================
   defp parse_arguments(input) do
     do_parse(String.trim(input), [], "", :normal)
@@ -239,6 +237,11 @@ defmodule CLI do
 
   defp do_parse(<<>>, acc, current, _mode) do
     if current == "", do: acc, else: acc ++ [current]
+  end
+
+  # Backslash (ONLY in normal mode)
+  defp do_parse(<<"\\" , c, rest::binary>>, acc, current, :normal) do
+    do_parse(rest, acc, current <> <<c>>, :normal)
   end
 
   # Single quotes
