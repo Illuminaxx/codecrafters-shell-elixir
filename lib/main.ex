@@ -1,21 +1,28 @@
 defmodule CLI do
   import Bitwise
 
+  # =========================
+  # ENTRY POINT
+  # =========================
   def main(_args) do
     :io.setopts(:standard_io, binary: true, encoding: :latin1, echo: false)
     IO.write("$ ")
     loop("", [])
   end
 
+  # =========================
+  # MAIN LOOP (with history)
+  # =========================
   defp loop(current, history) do
     case IO.getn("", 1) do
       "\n" ->
         cmd = String.trim(current)
 
         if cmd != "" do
-          handle_command(cmd, history)
+          new_history = history ++ [cmd]
+          handle_command(cmd, new_history)
           IO.write("$ ")
-          loop("", history ++ [cmd])
+          loop("", new_history)
         else
           IO.write("$ ")
           loop("", history)
@@ -29,39 +36,84 @@ defmodule CLI do
     end
   end
 
-  defp handle_command("history", history) do
-    Enum.with_index(history, 1)
-    |> Enum.each(fn {cmd, i} ->
-      IO.puts("  #{i}  #{cmd}")
-    end)
-  end
-
+  # =========================
+  # COMMAND DISPATCH
+  # =========================
   defp handle_command(cmd, history) do
-    if has_redirection?(cmd) or String.contains?(cmd, "|") do
-      handle_via_sh(cmd)
-    else
-      cond do
-        cmd == "cd" -> handle_cd("~")
-        String.starts_with?(cmd, "cd ") -> handle_cd(String.trim_leading(cmd, "cd "))
-        String.starts_with?(cmd, "echo") -> handle_echo(cmd)
-        String.starts_with?(cmd, "type ") -> handle_type(cmd)
-        cmd == "pwd" -> IO.puts(File.cwd!())
-        cmd == "exit" -> System.halt(0)
-        true -> handle_external(cmd)
-      end
+    cond do
+      cmd == "history" ->
+        print_history(history)
+
+      String.starts_with?(cmd, "history ") ->
+        handle_history_limit(cmd, history)
+
+      has_redirection?(cmd) or String.contains?(cmd, "|") ->
+        handle_via_sh(cmd)
+
+      cmd == "cd" ->
+        handle_cd("~")
+
+      String.starts_with?(cmd, "cd ") ->
+        handle_cd(String.trim_leading(cmd, "cd "))
+
+      String.starts_with?(cmd, "echo") ->
+        handle_echo(cmd)
+
+      String.starts_with?(cmd, "type ") ->
+        handle_type(cmd)
+
+      cmd == "pwd" ->
+        IO.puts(File.cwd!())
+
+      cmd == "exit" ->
+        System.halt(0)
+
+      true ->
+        handle_external(cmd)
     end
   end
 
-  defp has_redirection?(cmd) do
-    String.contains?(cmd, ["2>", "1>", ">>", ">"])
+  # =========================
+  # HISTORY BUILTIN
+  # =========================
+  defp print_history(history) do
+    Enum.with_index(history, 1)
+    |> Enum.each(fn {cmd, index} ->
+      IO.puts("    #{index}  #{cmd}")
+    end)
   end
 
+  defp handle_history_limit(cmd, history) do
+    case String.trim_leading(cmd, "history ") |> Integer.parse() do
+      {n, ""} when n > 0 ->
+        start_index = max(length(history) - n + 1, 1)
+
+        history
+        |> Enum.take(-n)
+        |> Enum.with_index(start_index)
+        |> Enum.each(fn {cmd, index} ->
+          IO.puts("    #{index}  #{cmd}")
+        end)
+
+      _ ->
+        :ok
+    end
+  end
+
+  # =========================
+  # BUILTINS
+  # =========================
   defp handle_cd(path) do
     resolved =
       cond do
-        path == "~" -> System.get_env("HOME")
-        String.starts_with?(path, "~/") -> String.replace_prefix(path, "~", System.get_env("HOME"))
-        true -> path
+        path == "~" ->
+          System.get_env("HOME")
+
+        String.starts_with?(path, "~/") ->
+          String.replace_prefix(path, "~", System.get_env("HOME"))
+
+        true ->
+          path
       end
 
     case File.cd(resolved) do
@@ -84,15 +136,25 @@ defmodule CLI do
     builtins = ["echo", "cd", "pwd", "type", "exit", "history"]
 
     cond do
-      arg in builtins -> IO.puts("#{arg} is a shell builtin")
-      exec = find_executable(arg) -> IO.puts("#{arg} is #{exec}")
-      true -> IO.puts("#{arg}: not found")
+      arg in builtins ->
+        IO.puts("#{arg} is a shell builtin")
+
+      exec = find_executable(arg) ->
+        IO.puts("#{arg} is #{exec}")
+
+      true ->
+        IO.puts("#{arg}: not found")
     end
   end
 
+  # =========================
+  # EXTERNAL COMMANDS
+  # =========================
   defp handle_external(cmd) do
     case parse_arguments(cmd) do
-      [] -> :ok
+      [] ->
+        :ok
+
       [command | args] ->
         case find_executable(command) do
           nil ->
@@ -135,6 +197,12 @@ defmodule CLI do
     end
   end
 
+  # =========================
+  # HELPERS
+  # =========================
+  defp has_redirection?(cmd),
+    do: String.contains?(cmd, ["2>", "1>", ">>", ">"])
+
   defp find_executable(cmd) do
     System.get_env("PATH", "")
     |> String.split(":")
@@ -153,6 +221,9 @@ defmodule CLI do
   defp escape_single_quotes(str),
     do: String.replace(str, "'", "'\\''")
 
+  # =========================
+  # ARGUMENT PARSER
+  # =========================
   defp parse_arguments(input),
     do: do_parse(String.trim(input), [], "", :normal)
 
@@ -179,7 +250,7 @@ defmodule CLI do
 
   defp do_parse(<<"\\", c, rest::binary>>, acc, cur, :double)
        when c in [?\", ?\\],
-    do: do_parse(rest, acc, cur <> <<c>>, :double)
+       do: do_parse(rest, acc, cur <> <<c>>, :double)
 
   defp do_parse(<<"\\", c, rest::binary>>, acc, cur, :double),
     do: do_parse(rest, acc, cur <> <<?\\, c>>, :double)
