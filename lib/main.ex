@@ -26,7 +26,7 @@ defmodule CLI do
   # =========================
   # COMMAND DISPATCH
   # =========================
-  defp handle_command("exit"), do: :ok
+defp handle_command("exit"), do: System.halt(0)
   defp handle_command("pwd"), do: IO.puts(File.cwd!())
 
   defp handle_command(cmd) do
@@ -34,6 +34,7 @@ defmodule CLI do
       cmd == "cd" -> handle_cd("~")
       String.starts_with?(cmd, "cd ") -> handle_cd(String.trim_leading(cmd, "cd "))
       String.starts_with?(cmd, "echo") -> handle_echo(cmd)
+      String.starts_with?(cmd, "type ") -> handle_type(cmd)
       true -> handle_external(cmd)
     end
   end
@@ -44,10 +45,14 @@ defmodule CLI do
   defp handle_cd(path) do
     resolved =
       cond do
-        path == "~" -> System.get_env("HOME")
+        path == "~" ->
+          System.get_env("HOME")
+
         String.starts_with?(path, "~/") ->
           String.replace_prefix(path, "~", System.get_env("HOME"))
-        true -> path
+
+        true ->
+          path
       end
 
     case File.cd(resolved) do
@@ -56,16 +61,30 @@ defmodule CLI do
     end
   end
 
-defp handle_echo(cmd) do
-  {raw_args, outfile} =
-    cmd
-    |> String.replace_prefix("echo", "")
-    |> parse_with_redirection()
+  defp handle_echo(cmd) do
+    {raw_args, outfile} =
+      cmd
+      |> String.replace_prefix("echo", "")
+      |> parse_with_redirection()
 
-  args = parse_arguments(raw_args)   # 👈 AJOUT
+    # 👈 AJOUT
+    args = parse_arguments(raw_args)
 
-  write_output(Enum.join(args, " "), outfile)
-end
+    write_output(Enum.join(args, " "), outfile)
+  end
+
+  defp handle_type(cmd) do
+    arg = String.trim_leading(cmd, "type ") |> String.trim()
+
+    builtins = ["echo", "cd", "pwd", "type", "exit"]
+
+    cond do
+      arg in builtins -> IO.puts("#{arg} is a shell builtin")
+      exec = find_executable(arg) -> IO.puts("#{arg} is #{exec}")
+      true -> IO.puts("#{arg}: not found")
+
+    end
+  end
 
   # =========================
   # EXTERNAL COMMANDS
@@ -75,7 +94,9 @@ end
     parts = parse_arguments(cmd_part)
 
     case parts do
-      [] -> :ok
+      [] ->
+        :ok
+
       [exe | args] ->
         case find_executable(exe) do
           nil ->
@@ -145,9 +166,9 @@ end
   defp parse_arguments(input), do: do_parse(String.trim(input), [], "", :normal)
 
   defp do_parse(<<>>, acc, current, _),
-    do: (if current == "", do: acc, else: acc ++ [current])
+    do: if(current == "", do: acc, else: acc ++ [current])
 
-  defp do_parse(<<"\\" , c, rest::binary>>, acc, cur, :normal),
+  defp do_parse(<<"\\", c, rest::binary>>, acc, cur, :normal),
     do: do_parse(rest, acc, cur <> <<c>>, :normal)
 
   defp do_parse(<<"'", rest::binary>>, acc, cur, :normal),
@@ -165,10 +186,10 @@ end
   defp do_parse(<<"\"", rest::binary>>, acc, cur, :double),
     do: do_parse(rest, acc, cur, :normal)
 
-  defp do_parse(<<"\\" , c, rest::binary>>, acc, cur, :double) when c in [?\", ?\\],
+  defp do_parse(<<"\\", c, rest::binary>>, acc, cur, :double) when c in [?\", ?\\],
     do: do_parse(rest, acc, cur <> <<c>>, :double)
 
-  defp do_parse(<<"\\" , c, rest::binary>>, acc, cur, :double),
+  defp do_parse(<<"\\", c, rest::binary>>, acc, cur, :double),
     do: do_parse(rest, acc, cur <> <<?\\, c>>, :double)
 
   defp do_parse(<<c, rest::binary>>, acc, cur, :double),
