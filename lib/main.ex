@@ -1,271 +1,129 @@
 defmodule CLI do
-  import Bitwise
-
-  # =========================
-  # ENTRY POINT
-  # =========================
   def main(_args) do
-    :io.setopts(:standard_io, binary: true, encoding: :latin1, echo: false)
+    # Configure IO options
+    :io.setopts(:standard_io, binary: true, encoding: :latin1)
+
+    # Try to disable echo (may not work in all environments)
+    :io.setopts(:standard_io, echo: false)
+
     IO.write("$ ")
-    loop("", [])
+    loop("", [], nil)
   end
 
-  # =========================
-  # MAIN LOOP (with history)
-  # =========================
-  defp loop(current, history) do
-    case IO.getn("", 1) do
-      "\n" ->
-        cmd = String.trim(current)
+  defp loop(current, history, cursor) do
+    # Check if current ends with ^[[ (Windows bash escape sequence start)
+    if String.ends_with?(current, "^[[") do
+      # Read next char to see if it's A (up arrow)
+      case IO.getn("", 1) do
+        "A" ->
+          # Remove ^[[ from current and handle up arrow
+          trimmed = String.slice(current, 0..-4//1)
+          handle_up_arrow(trimmed, history, cursor)
 
-        if cmd != "" do
-          new_history = history ++ [cmd]
-          handle_command(cmd, new_history)
-          IO.write("$ ")
-          loop("", new_history)
-        else
-          IO.write("$ ")
-          loop("", history)
+        other ->
+          loop(current <> other, history, cursor)
+      end
+    else
+      case IO.getn("", 1) do
+        "\n" ->
+          cmd = String.trim(current)
+
+          if cmd != "" do
+            execute_command(cmd)
+            IO.write("$ ")
+            loop("", history ++ [cmd], nil)
+          else
+            IO.write("$ ")
+            loop("", history, nil)
+          end
+
+        <<27>> ->
+          handle_escape(current, history, cursor)
+
+        <<c>> when c < 32 and c != ?\n ->
+          loop(current, history, cursor)
+
+        <<c>> ->
+          loop(current <> <<c>>, history, nil)
+
+        _ ->
+          loop(current, history, cursor)
+      end
+    end
+  end
+
+  defp handle_escape(current, history, cursor) do
+    # Read the next byte after ESC
+    byte1 = IO.getn("", 1)
+
+    case byte1 do
+      "[" ->
+        # Read the third byte
+        byte2 = IO.getn("", 1)
+
+        case byte2 do
+          "A" ->
+            handle_up_arrow(current, history, cursor)
+
+          _ ->
+            # Unexpected sequence, ignore
+            loop(current, history, cursor)
         end
 
-      <<c>> ->
-        loop(current <> <<c>>, history)
-
       _ ->
-        loop(current, history)
+        # Not an arrow key sequence, ignore
+        loop(current, history, cursor)
     end
   end
 
-  # =========================
-  # COMMAND DISPATCH
-  # =========================
-  defp handle_command(cmd, history) do
-    cond do
-      cmd == "history" ->
-        print_history(history)
+  defp handle_up_arrow(current, history, cursor) do
+    if history == [] do
+      loop(current, history, cursor)
+    else
+      new_cursor =
+        case cursor do
+          nil -> length(history) - 1
+          0 -> 0
+          n -> n - 1
+        end
 
-      String.starts_with?(cmd, "history ") ->
-        handle_history_limit(cmd, history)
+      recalled = Enum.at(history, new_cursor)
 
-      has_redirection?(cmd) or String.contains?(cmd, "|") ->
-        handle_via_sh(cmd)
-
-      cmd == "cd" ->
-        handle_cd("~")
-
-      String.starts_with?(cmd, "cd ") ->
-        handle_cd(String.trim_leading(cmd, "cd "))
-
-      String.starts_with?(cmd, "echo") ->
-        handle_echo(cmd)
-
-      String.starts_with?(cmd, "type ") ->
-        handle_type(cmd)
-
-      cmd == "pwd" ->
-        IO.puts(File.cwd!())
-
-      cmd == "exit" ->
-        System.halt(0)
-
-      true ->
-        handle_external(cmd)
-    end
-  end
-
-  # =========================
-  # HISTORY BUILTIN
-  # =========================
-  defp print_history(history) do
-    Enum.with_index(history, 1)
-    |> Enum.each(fn {cmd, index} ->
-      IO.puts("    #{index}  #{cmd}")
-    end)
-  end
-
-  defp handle_history_limit(cmd, history) do
-    case String.trim_leading(cmd, "history ") |> Integer.parse() do
-      {n, ""} when n > 0 ->
-        start_index = max(length(history) - n + 1, 1)
-
-        history
-        |> Enum.take(-n)
-        |> Enum.with_index(start_index)
-        |> Enum.each(fn {cmd, index} ->
-          IO.puts("    #{index}  #{cmd}")
-        end)
-
-      _ ->
-        :ok
-    end
-  end
-
-  # =========================
-  # BUILTINS
-  # =========================
-  defp handle_cd(path) do
-    resolved =
-      cond do
-        path == "~" ->
-          System.get_env("HOME")
-
-        String.starts_with?(path, "~/") ->
-          String.replace_prefix(path, "~", System.get_env("HOME"))
-
-        true ->
-          path
+      if recalled do
+        clear_len = String.length(current) + 2
+        IO.write("\r" <> String.duplicate(" ", clear_len) <> "\r")
+        IO.write("$ " <> recalled)
+        loop(recalled, history, new_cursor)
+      else
+        loop(current, history, cursor)
       end
-
-    case File.cd(resolved) do
-      :ok -> :ok
-      {:error, _} -> IO.puts("cd: #{path}: No such file or directory")
     end
   end
 
-  defp handle_echo(cmd) do
-    args =
-      cmd
-      |> String.replace_prefix("echo", "")
-      |> parse_arguments()
+  defp execute_command("exit"), do: System.halt(0)
+  defp execute_command("pwd"), do: IO.puts(File.cwd!())
 
-    IO.puts(Enum.join(args, " "))
-  end
-
-  defp handle_type(cmd) do
-    arg = String.trim_leading(cmd, "type ") |> String.trim()
-    builtins = ["echo", "cd", "pwd", "type", "exit", "history"]
-
-    cond do
-      arg in builtins ->
-        IO.puts("#{arg} is a shell builtin")
-
-      exec = find_executable(arg) ->
-        IO.puts("#{arg} is #{exec}")
-
-      true ->
-        IO.puts("#{arg}: not found")
-    end
-  end
-
-  # =========================
-  # EXTERNAL COMMANDS
-  # =========================
-  defp handle_external(cmd) do
-    case parse_arguments(cmd) do
-      [] ->
-        :ok
+  defp execute_command(cmd) do
+    case String.split(cmd) do
+      ["echo" | rest] ->
+        IO.puts(Enum.join(rest, " "))
 
       [command | args] ->
-        case find_executable(command) do
+        case System.find_executable(command) do
           nil ->
             IO.puts("#{command}: command not found")
 
-          exec_path ->
-            port =
-              Port.open(
-                {:spawn_executable, exec_path},
-                [:binary, :exit_status, {:args, args}, {:arg0, command}, {:line, 4096}]
-              )
-
-            receive_output(port)
+          exec ->
+            {out, _} = System.cmd(exec, args, stderr_to_stdout: true)
+            IO.write(out)
+            # Ensure newline if external command didn't print one
+            unless String.ends_with?(out, "\n") do
+              IO.write("\n")
+            end
         end
-    end
-  end
 
-  defp handle_via_sh(cmd) do
-    port =
-      Port.open(
-        {:spawn, ~c"sh -c '#{escape_single_quotes(cmd)}'"},
-        [:binary, :exit_status, {:line, 4096}]
-      )
-
-    receive_output(port)
-  end
-
-  defp receive_output(port) do
-    receive do
-      {^port, {:data, {:eol, line}}} ->
-        IO.puts(line)
-        receive_output(port)
-
-      {^port, {:data, {:noeol, data}}} ->
-        IO.write(data)
-        receive_output(port)
-
-      {^port, {:exit_status, _}} ->
+      [] ->
         :ok
     end
   end
-
-  # =========================
-  # HELPERS
-  # =========================
-  defp has_redirection?(cmd),
-    do: String.contains?(cmd, ["2>", "1>", ">>", ">"])
-
-  defp find_executable(cmd) do
-    System.get_env("PATH", "")
-    |> String.split(":")
-    |> Enum.find_value(fn dir ->
-      path = Path.join(dir, cmd)
-
-      if File.exists?(path) do
-        case File.stat(path) do
-          {:ok, %File.Stat{mode: mode}} when (mode &&& 0o111) != 0 -> path
-          _ -> nil
-        end
-      end
-    end)
-  end
-
-  defp escape_single_quotes(str),
-    do: String.replace(str, "'", "'\\''")
-
-  # =========================
-  # ARGUMENT PARSER
-  # =========================
-  defp parse_arguments(input),
-    do: do_parse(String.trim(input), [], "", :normal)
-
-  defp do_parse(<<>>, acc, current, _),
-    do: if(current == "", do: acc, else: acc ++ [current])
-
-  defp do_parse(<<"\\", c, rest::binary>>, acc, cur, :normal),
-    do: do_parse(rest, acc, cur <> <<c>>, :normal)
-
-  defp do_parse(<<"'", rest::binary>>, acc, cur, :normal),
-    do: do_parse(rest, acc, cur, :single)
-
-  defp do_parse(<<"'", rest::binary>>, acc, cur, :single),
-    do: do_parse(rest, acc, cur, :normal)
-
-  defp do_parse(<<c, rest::binary>>, acc, cur, :single),
-    do: do_parse(rest, acc, cur <> <<c>>, :single)
-
-  defp do_parse(<<"\"", rest::binary>>, acc, cur, :normal),
-    do: do_parse(rest, acc, cur, :double)
-
-  defp do_parse(<<"\"", rest::binary>>, acc, cur, :double),
-    do: do_parse(rest, acc, cur, :normal)
-
-  defp do_parse(<<"\\", c, rest::binary>>, acc, cur, :double)
-       when c in [?\", ?\\],
-       do: do_parse(rest, acc, cur <> <<c>>, :double)
-
-  defp do_parse(<<"\\", c, rest::binary>>, acc, cur, :double),
-    do: do_parse(rest, acc, cur <> <<?\\, c>>, :double)
-
-  defp do_parse(<<c, rest::binary>>, acc, cur, :double),
-    do: do_parse(rest, acc, cur <> <<c>>, :double)
-
-  defp do_parse(<<" ", rest::binary>>, acc, cur, :normal) do
-    if cur == "" do
-      do_parse(rest, acc, "", :normal)
-    else
-      do_parse(rest, acc ++ [cur], "", :normal)
-    end
-  end
-
-  defp do_parse(<<c, rest::binary>>, acc, cur, :normal),
-    do: do_parse(rest, acc, cur <> <<c>>, :normal)
 end
