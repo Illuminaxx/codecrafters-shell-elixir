@@ -219,13 +219,16 @@ defmodule CLI do
               port = Port.open({:spawn_executable, exec}, [
                 :binary,
                 :exit_status,
-                :use_stdio,
+                :eof,
                 args: args
               ])
 
-              send(port, {self(), {:command, input}})
-              send(port, {self(), :close})
+              # Send input
+              Port.command(port, input)
+              # Close stdin to signal EOF
+              Port.command(port, :eof)
 
+              # Collect output
               result = collect_port_output(port, "")
               {:ok, result}
             else
