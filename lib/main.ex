@@ -2,20 +2,20 @@ defmodule CLI do
   def main(_args) do
     # Try to save original terminal settings
     original_settings =
-      case System.cmd("sh", ["-c", "stty -g 2>/dev/null"], stderr_to_stdout: true) do
+      case System.cmd("stty", ["-g"], stderr_to_stdout: true) do
         {settings, 0} -> String.trim(settings)
         _ -> nil  # Not a terminal, can't save settings
       end
 
     # Put terminal in raw mode with -echo
     raw_mode =
-      case System.cmd("sh", ["-c", "stty raw -echo 2>/dev/null"], stderr_to_stdout: true) do
+      case System.cmd("stty", ["raw", "-echo"], stderr_to_stdout: true) do
         {_, 0} -> true
         _ -> false  # Not in raw mode
       end
 
-    # Configure IO options - disable echo at Erlang level too
-    :io.setopts(:standard_io, binary: true, encoding: :latin1, echo: false)
+    # Configure IO options
+    :io.setopts(:standard_io, binary: true, encoding: :latin1)
 
     IO.write("$ ")
 
@@ -25,7 +25,7 @@ defmodule CLI do
     after
       # Restore original terminal settings if we saved them
       if original_settings do
-        System.cmd("sh", ["-c", "stty #{original_settings} 2>/dev/null"], stderr_to_stdout: true)
+        System.cmd("stty", [original_settings], stderr_to_stdout: true)
       end
     end
   end
