@@ -170,14 +170,41 @@ defmodule CLI do
   end
 
   defp execute_pipeline(cmd) do
-    # For pipelines, use the system shell to handle it
-    # This is simpler and more reliable than manual piping
-    case System.cmd("sh", ["-c", cmd], stderr_to_stdout: true) do
-      {output, _} ->
-        IO.write(output)
-        unless String.ends_with?(output, "\n") do
-          IO.write("\n")
-        end
+    # For pipelines, use the system shell to handle it via Port
+    # This allows us to handle commands that don't terminate (like tail -f)
+    port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
+      [:binary, :exit_status])
+
+    # Collect output with a timeout
+    output = collect_pipeline_output(port, "", 5000)
+
+    IO.write(output)
+    unless String.ends_with?(output, "\n") do
+      IO.write("\n")
+    end
+  end
+
+  defp collect_pipeline_output(port, acc, timeout) do
+    receive do
+      {^port, {:data, data}} ->
+        collect_pipeline_output(port, acc <> data, timeout)
+      {^port, {:exit_status, _}} ->
+        # Process exited, flush any remaining data
+        flush_pipeline_data(port, acc)
+    after
+      timeout ->
+        # Timeout - kill the port and return what we have
+        Port.close(port)
+        flush_pipeline_data(port, acc)
+    end
+  end
+
+  defp flush_pipeline_data(port, acc) do
+    receive do
+      {^port, {:data, data}} ->
+        flush_pipeline_data(port, acc <> data)
+    after
+      0 -> acc
     end
   end
 
