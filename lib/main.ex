@@ -188,24 +188,41 @@ defmodule CLI do
   defp collect_pipeline_output(port, acc, timeout) do
     receive do
       {^port, {:data, data}} ->
-        # Reset timeout when we receive data
+        # Got data, continue with same timeout
         collect_pipeline_output(port, acc <> data, timeout)
       {^port, {:exit_status, _}} ->
-        # Process exited, flush any remaining data
+        # Process exited normally, flush any remaining data
         flush_pipeline_data(port, acc)
     after
       timeout ->
-        # Timeout - but keep collecting with shorter intervals
-        case flush_pipeline_data(port, acc) do
-          ^acc ->
-            # No new data, kill the port
-            Port.close(port)
-            flush_pipeline_data(port, acc)
-          new_acc ->
-            # Got more data, continue
-            collect_pipeline_output(port, new_acc, timeout)
+        # No data for timeout period - check if we got any data at all
+        if acc == "" do
+          # No data yet, wait longer (up to 10 seconds total)
+          collect_pipeline_output(port, acc, 1000)
+        else
+          # We have some data, but no new data for 100ms
+          # Try a few more times before giving up
+          collect_pipeline_with_retries(port, acc, 5)
         end
     end
+  end
+
+  defp collect_pipeline_with_retries(port, acc, retries) when retries > 0 do
+    case flush_pipeline_data(port, acc) do
+      ^acc ->
+        # No new data, wait a bit and retry
+        :timer.sleep(100)
+        collect_pipeline_with_retries(port, acc, retries - 1)
+      new_acc ->
+        # Got more data, reset retries
+        collect_pipeline_output(port, new_acc, 100)
+    end
+  end
+
+  defp collect_pipeline_with_retries(port, acc, 0) do
+    # Out of retries, kill the port and return what we have
+    Port.close(port)
+    flush_pipeline_data(port, acc)
   end
 
   defp flush_pipeline_data(port, acc) do
