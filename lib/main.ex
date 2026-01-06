@@ -1,81 +1,46 @@
 defmodule CLI do
   def main(_args) do
-    # Try to save original terminal settings by redirecting /dev/tty
-    original_settings =
-      case System.cmd("sh", ["-c", "stty -g < /dev/tty"], stderr_to_stdout: true) do
-        {settings, 0} -> String.trim(settings)
-        _ -> nil  # Not a terminal, can't save settings
-      end
-
-    # Put terminal in raw mode with -echo, using /dev/tty
-    {stty_output, stty_exit} = System.cmd("sh", ["-c", "stty raw -echo < /dev/tty"], stderr_to_stdout: true)
-    :io.format(:standard_error, "[DEBUG] stty raw -echo: exit=~p output=~p~n", [stty_exit, stty_output])
-
-    raw_mode =
-      case stty_exit do
-        0 -> true
-        _ -> false  # Not in raw mode
-      end
-
-    # Configure IO options
+    # Configure IO for binary input
     :io.setopts(:standard_io, binary: true, encoding: :latin1)
 
     IO.write("$ ")
-
-    # Ensure terminal is restored on exit
-    try do
-      loop("", [], nil, raw_mode)
-    after
-      # Restore original terminal settings if we saved them
-      if original_settings do
-        System.cmd("sh", ["-c", "stty #{original_settings} < /dev/tty"], stderr_to_stdout: true)
-      end
-    end
+    loop("", [], nil)
   end
 
-  defp loop(current, history, cursor, raw_mode) do
+  defp loop(current, history, cursor) do
     ch = :io.get_chars("", 1)
     case ch do
-      <<byte>> ->
-        # Debug: log only ESC and following bytes
-        if byte == 27 or byte == 91 or byte == 65 do
-          :io.format(:standard_error, "[DEBUG] Byte: ~p (~c)~n", [byte, if(byte >= 32, do: byte, else: ??)])
-        end
-        handle_char(byte, current, history, cursor, raw_mode)
-      _ -> loop(current, history, cursor, raw_mode)
+      <<byte>> -> handle_char(byte, current, history, cursor)
+      _ -> loop(current, history, cursor)
     end
   end
 
-  defp handle_char(ch, current, history, cursor, raw_mode) do
+  defp handle_char(ch, current, history, cursor) do
     cond do
-      # In raw mode, Enter key sends \r (carriage return)
-      ch == ?\n or ch == ?\r ->
-        if raw_mode, do: IO.write("\r\n")
+      ch == ?\n ->
         cmd = String.trim(current)
 
         if cmd != "" do
           execute_command(cmd)
           IO.write("$ ")
-          loop("", history ++ [cmd], nil, raw_mode)
+          loop("", history ++ [cmd], nil)
         else
           IO.write("$ ")
-          loop("", history, nil, raw_mode)
+          loop("", history, nil)
         end
 
       ch == 27 ->
-        handle_escape(current, history, cursor, raw_mode)
+        handle_escape(current, history, cursor)
 
       ch < 32 ->
-        loop(current, history, cursor, raw_mode)
+        loop(current, history, cursor)
 
       true ->
-        # Only echo if in raw mode (otherwise terminal does it automatically)
-        if raw_mode, do: IO.write(<<ch>>)
-        loop(current <> <<ch>>, history, nil, raw_mode)
+        loop(current <> <<ch>>, history, nil)
     end
   end
 
-  defp handle_escape(current, history, cursor, raw_mode) do
+  defp handle_escape(current, history, cursor) do
     # Read the next byte after ESC
     byte1 = :io.get_chars("", 1)
     case byte1 do
@@ -84,22 +49,22 @@ defmodule CLI do
         byte2 = :io.get_chars("", 1)
         case byte2 do
           <<65>> ->  # 'A' is 65
-            handle_up_arrow(current, history, cursor, raw_mode)
+            handle_up_arrow(current, history, cursor)
 
           _ ->
             # Unexpected sequence, ignore
-            loop(current, history, cursor, raw_mode)
+            loop(current, history, cursor)
         end
 
       _ ->
         # Not an arrow key sequence, ignore
-        loop(current, history, cursor, raw_mode)
+        loop(current, history, cursor)
     end
   end
 
-  defp handle_up_arrow(current, history, cursor, raw_mode) do
+  defp handle_up_arrow(current, history, cursor) do
     if history == [] do
-      loop(current, history, cursor, raw_mode)
+      loop(current, history, cursor)
     else
       # Calculate new cursor position
       new_cursor =
@@ -119,9 +84,9 @@ defmodule CLI do
 
         # Print the recalled command
         IO.write(recalled)
-        loop(recalled, history, new_cursor, raw_mode)
+        loop(recalled, history, new_cursor)
       else
-        loop(current, history, cursor, raw_mode)
+        loop(current, history, cursor)
       end
     end
   end
