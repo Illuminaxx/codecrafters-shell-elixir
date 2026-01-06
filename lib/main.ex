@@ -136,10 +136,10 @@ defmodule CLI do
       String.contains?(cmd, "2>") ->
         execute_with_stderr_redirect(cmd, history)
 
-      String.contains?(cmd, ">>") ->
+      String.contains?(cmd, "1>>") or String.contains?(cmd, ">>") ->
         execute_with_append_redirect(cmd, history)
 
-      String.contains?(cmd, ">") ->
+      String.contains?(cmd, "1>") or String.contains?(cmd, ">") ->
         execute_with_redirect(cmd, history)
 
       true ->
