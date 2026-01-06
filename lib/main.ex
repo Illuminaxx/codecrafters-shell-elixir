@@ -35,9 +35,11 @@ defmodule CLI do
         cmd = String.trim(current)
 
         if cmd != "" do
-          execute_command(cmd, history)
+          # Add to history first, then execute
+          new_history = history ++ [cmd]
+          execute_command(cmd, new_history)
           IO.write(:standard_error, "$ ")
-          loop("", history ++ [cmd], nil)
+          loop("", new_history, nil)
         else
           IO.write(:standard_error, "$ ")
           loop("", history, nil)
