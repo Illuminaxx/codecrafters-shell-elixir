@@ -12,13 +12,26 @@ void disable_raw_mode() {
 }
 
 void enable_raw_mode() {
+    FILE *debug = fopen("/tmp/raw_wrapper_debug.log", "w");
+    if (debug) {
+        fprintf(debug, "Wrapper started\n");
+        fflush(debug);
+    }
+
     if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
         // Not a TTY, skip raw mode
-        fprintf(stderr, "[wrapper] tcgetattr failed - not a TTY\n");
+        if (debug) {
+            fprintf(debug, "tcgetattr failed - not a TTY\n");
+            fclose(debug);
+        }
         return;
     }
 
-    fprintf(stderr, "[wrapper] Successfully got terminal attrs, enabling raw mode\n");
+    if (debug) {
+        fprintf(debug, "tcgetattr succeeded\n");
+        fflush(debug);
+    }
+
     atexit(disable_raw_mode);
 
     struct termios raw = orig_termios;
@@ -30,13 +43,29 @@ void enable_raw_mode() {
     raw.c_cc[VTIME] = 0;
 
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
-        fprintf(stderr, "[wrapper] tcsetattr failed\n");
+        if (debug) {
+            fprintf(debug, "tcsetattr failed\n");
+            fclose(debug);
+        }
     } else {
-        fprintf(stderr, "[wrapper] Raw mode enabled successfully\n");
+        if (debug) {
+            fprintf(debug, "tcsetattr succeeded - raw mode enabled\n");
+            fclose(debug);
+        }
     }
 }
 
 int main(int argc, char *argv[]) {
+    FILE *debug = fopen("/tmp/raw_wrapper_main.log", "w");
+    if (debug) {
+        fprintf(debug, "Wrapper main() started with %d args\n", argc);
+        for (int i = 0; i < argc; i++) {
+            fprintf(debug, "  argv[%d] = %s\n", i, argv[i]);
+        }
+        fflush(debug);
+        fclose(debug);
+    }
+
     // Enable raw mode on the current terminal
     enable_raw_mode();
 
