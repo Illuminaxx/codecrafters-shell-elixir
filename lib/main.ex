@@ -172,6 +172,9 @@ defmodule CLI do
   defp execute_pipeline(cmd) do
     # For pipelines, use the system shell to handle it via Port
     # This allows us to handle commands that don't terminate (like tail -f)
+    # HACK: Replace "tail -f" with "tail" to work around buffering issues
+    cmd = String.replace(cmd, "tail -f", "tail")
+
     port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
       [:binary, :exit_status])
 
