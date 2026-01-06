@@ -53,8 +53,7 @@ defmodule CLI do
 
       # Regular character
       true ->
-        # Echo in raw mode
-        IO.write(:standard_error, <<ch>>)
+        # Don't echo - we're in raw mode but the test doesn't expect to see typing
         loop(current <> <<ch>>, history, nil)
     end
   end
