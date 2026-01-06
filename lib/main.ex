@@ -1,14 +1,14 @@
 defmodule CLI do
   def main(_args) do
-    # Try to save original terminal settings
+    # Try to save original terminal settings by redirecting /dev/tty
     original_settings =
-      case System.cmd("stty", ["-g"], stderr_to_stdout: true) do
+      case System.cmd("sh", ["-c", "stty -g < /dev/tty"], stderr_to_stdout: true) do
         {settings, 0} -> String.trim(settings)
         _ -> nil  # Not a terminal, can't save settings
       end
 
-    # Put terminal in raw mode with -echo
-    {stty_output, stty_exit} = System.cmd("stty", ["raw", "-echo"], stderr_to_stdout: true)
+    # Put terminal in raw mode with -echo, using /dev/tty
+    {stty_output, stty_exit} = System.cmd("sh", ["-c", "stty raw -echo < /dev/tty"], stderr_to_stdout: true)
     :io.format(:standard_error, "[DEBUG] stty raw -echo: exit=~p output=~p~n", [stty_exit, stty_output])
 
     raw_mode =
@@ -28,7 +28,7 @@ defmodule CLI do
     after
       # Restore original terminal settings if we saved them
       if original_settings do
-        System.cmd("stty", [original_settings], stderr_to_stdout: true)
+        System.cmd("sh", ["-c", "stty #{original_settings} < /dev/tty"], stderr_to_stdout: true)
       end
     end
   end
