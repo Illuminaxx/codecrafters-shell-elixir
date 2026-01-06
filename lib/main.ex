@@ -57,8 +57,7 @@ defmodule CLI do
         loop(current, history, cursor)
 
       true ->
-        # Regular character - echo it to stderr
-        IO.write(:standard_error, <<ch>>)
+        # Regular character - don't echo, just add to buffer
         loop(current <> <<ch>>, history, nil)
     end
   end
