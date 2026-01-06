@@ -219,12 +219,12 @@ defmodule CLI do
               port = Port.open({:spawn_executable, exec}, [
                 :binary,
                 :exit_status,
-                :stderr_to_stdout,
+                :use_stdio,
                 args: args
               ])
 
-              Port.command(port, input)
-              Port.close(port)
+              send(port, {self(), {:command, input}})
+              send(port, {self(), :close})
 
               result = collect_port_output(port, "")
               {:ok, result}
@@ -246,10 +246,21 @@ defmodule CLI do
     receive do
       {^port, {:data, data}} ->
         collect_port_output(port, acc <> data)
-      {^port, {:exit_status, _}} ->
-        acc
+      {^port, {:exit_status, _status}} ->
+        # Collect any remaining data
+        flush_port_data(port, acc)
     after
-      5000 -> acc
+      5000 ->
+        flush_port_data(port, acc)
+    end
+  end
+
+  defp flush_port_data(port, acc) do
+    receive do
+      {^port, {:data, data}} ->
+        flush_port_data(port, acc <> data)
+    after
+      0 -> acc
     end
   end
 
