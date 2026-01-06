@@ -1,92 +1,74 @@
 defmodule CLI do
   def main(_args) do
-    # Try to enable raw mode on the IO device
-    # This works if stdin is connected to a terminal
-    try do
-      # Get the group leader (IO server)
-      group_leader = Process.group_leader()
-
-      # Try to put the terminal in raw mode using Erlang's internal functions
-      # This bypasses the need for external stty
-      :io.setopts(group_leader, [binary: true, encoding: :latin1])
-
-      # Try to set raw mode on standard_io
-      case :io.setopts(:standard_io, binary: true, encoding: :latin1, echo: false) do
-        :ok -> :ok
-        _ -> :ok
-      end
-    catch
-      _, _ -> :ok
-    end
+    # Open stdin as a raw file descriptor
+    {:ok, stdin} = :file.open(:standard_io, [:read, :binary, {:encoding, :latin1}])
 
     IO.write("$ ")
-    loop("", [], nil)
+    loop("", [], nil, stdin)
   end
 
-  defp loop(current, history, cursor) do
-    ch = :io.get_chars("", 1)
-    case ch do
-      <<byte>> -> handle_char(byte, current, history, cursor)
-      _ -> loop(current, history, cursor)
+  defp loop(current, history, cursor, stdin) do
+    # Read one byte at a time using file:read
+    case :file.read(stdin, 1) do
+      {:ok, <<byte>>} ->
+        handle_char(byte, current, history, cursor, stdin)
+
+      :eof ->
+        System.halt(0)
+
+      {:error, _} ->
+        loop(current, history, cursor, stdin)
     end
   end
 
-  defp handle_char(ch, current, history, cursor) do
+  defp handle_char(ch, current, history, cursor, stdin) do
     cond do
       # Handle both \n (cooked) and \r (raw) for Enter
       ch == ?\n or ch == ?\r ->
-        # Only echo newline if we got \r (raw mode)
-        if ch == ?\r, do: IO.write("\r\n")
-
         cmd = String.trim(current)
 
         if cmd != "" do
           execute_command(cmd)
           IO.write("$ ")
-          loop("", history ++ [cmd], nil)
+          loop("", history ++ [cmd], nil, stdin)
         else
           IO.write("$ ")
-          loop("", history, nil)
+          loop("", history, nil, stdin)
         end
 
       ch == 27 ->
-        handle_escape(current, history, cursor)
+        handle_escape(current, history, cursor, stdin)
 
       ch < 32 ->
-        loop(current, history, cursor)
+        loop(current, history, cursor, stdin)
 
       true ->
-        loop(current <> <<ch>>, history, nil)
+        loop(current <> <<ch>>, history, nil, stdin)
     end
   end
 
-  defp handle_escape(current, history, cursor) do
+  defp handle_escape(current, history, cursor, stdin) do
     # Read the next byte after ESC
-    byte1 = :io.get_chars("", 1)
-    case byte1 do
-      <<91>> ->  # '[' is 91
+    case :file.read(stdin, 1) do
+      {:ok, <<91>>} ->  # '[' is 91
         # Read the third byte
-        byte2 = :io.get_chars("", 1)
-        case byte2 do
-          <<65>> ->  # 'A' is 65
-            handle_up_arrow(current, history, cursor)
+        case :file.read(stdin, 1) do
+          {:ok, <<65>>} ->  # 'A' is 65
+            handle_up_arrow(current, history, cursor, stdin)
 
           _ ->
-            # Unexpected sequence, ignore
-            loop(current, history, cursor)
+            loop(current, history, cursor, stdin)
         end
 
       _ ->
-        # Not an arrow key sequence, ignore
-        loop(current, history, cursor)
+        loop(current, history, cursor, stdin)
     end
   end
 
-  defp handle_up_arrow(current, history, cursor) do
+  defp handle_up_arrow(current, history, cursor, stdin) do
     if history == [] do
-      loop(current, history, cursor)
+      loop(current, history, cursor, stdin)
     else
-      # Calculate new cursor position
       new_cursor =
         case cursor do
           nil -> length(history) - 1
@@ -97,16 +79,15 @@ defmodule CLI do
       recalled = Enum.at(history, new_cursor)
 
       if recalled do
-        # Clear current line: \b \b for each character
+        # Clear current line
         for _ <- 1..String.length(current) do
           IO.write("\b \b")
         end
 
-        # Print the recalled command
         IO.write(recalled)
-        loop(recalled, history, new_cursor)
+        loop(recalled, history, new_cursor, stdin)
       else
-        loop(current, history, cursor)
+        loop(current, history, cursor, stdin)
       end
     end
   end
@@ -127,7 +108,6 @@ defmodule CLI do
           exec ->
             {out, _} = System.cmd(exec, args, stderr_to_stdout: true)
             IO.write(out)
-            # Ensure newline if external command didn't print one
             unless String.ends_with?(out, "\n") do
               IO.write("\n")
             end
