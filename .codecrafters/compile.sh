@@ -19,6 +19,8 @@ if command -v cc >/dev/null 2>&1; then
   # Create a wrapper script that calls the C wrapper with the escript
   cat > /tmp/codecrafters-build-shell-elixir <<'EOF'
 #!/bin/sh
+echo "[shell-wrapper] About to execute C wrapper" >&2
+ls -la /tmp/codecrafters-build-shell-elixir-wrapper >&2
 exec /tmp/codecrafters-build-shell-elixir-wrapper /tmp/codecrafters-build-shell-elixir-escript "$@"
 EOF
   chmod +x /tmp/codecrafters-build-shell-elixir
