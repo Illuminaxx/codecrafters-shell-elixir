@@ -231,7 +231,15 @@ defmodule CLI do
     # Execute command and return output
     case String.split(cmd) do
       ["echo" | rest] ->
-        {:ok, Enum.join(rest, " ") <> "\n"}
+        # Strip surrounding quotes from arguments
+        output = rest
+        |> Enum.map(fn arg ->
+          String.trim(arg, "\"")
+          |> String.trim("'")
+        end)
+        |> Enum.join(" ")
+
+        {:ok, output <> "\n"}
 
       [command | args] ->
         case System.find_executable(command) do
@@ -261,7 +269,15 @@ defmodule CLI do
     case String.split(cmd) do
       ["echo" | rest] ->
         # Echo is a builtin - just print to stdout (stderr redirection has no effect)
-        IO.puts(Enum.join(rest, " "))
+        # Strip surrounding quotes from arguments
+        output = rest
+        |> Enum.map(fn arg ->
+          String.trim(arg, "\"")
+          |> String.trim("'")
+        end)
+        |> Enum.join(" ")
+
+        IO.puts(output)
         :ok
 
       [command | args] ->
@@ -300,7 +316,15 @@ defmodule CLI do
         end
 
       ["echo" | rest] ->
-        IO.puts(Enum.join(rest, " "))
+        # Strip surrounding quotes from arguments
+        output = rest
+        |> Enum.map(fn arg ->
+          String.trim(arg, "\"")
+          |> String.trim("'")
+        end)
+        |> Enum.join(" ")
+
+        IO.puts(output)
 
       [command | args] ->
         case System.find_executable(command) do
