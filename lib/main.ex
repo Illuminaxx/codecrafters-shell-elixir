@@ -8,9 +8,12 @@ defmodule CLI do
       end
 
     # Put terminal in raw mode with -echo
+    {stty_output, stty_exit} = System.cmd("stty", ["raw", "-echo"], stderr_to_stdout: true)
+    :io.format(:standard_error, "[DEBUG] stty raw -echo: exit=~p output=~p~n", [stty_exit, stty_output])
+
     raw_mode =
-      case System.cmd("stty", ["raw", "-echo"], stderr_to_stdout: true) do
-        {_, 0} -> true
+      case stty_exit do
+        0 -> true
         _ -> false  # Not in raw mode
       end
 
