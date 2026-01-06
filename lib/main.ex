@@ -197,8 +197,14 @@ defmodule CLI do
             {:error, :not_found}
 
           exec ->
-            {out, _} = System.cmd(exec, args, stderr_to_stdout: true)
-            {:ok, out}
+            # Don't merge stderr with stdout - let stderr go to terminal
+            {out, exit_code} = System.cmd(exec, args, stderr_to_stdout: false)
+            if exit_code == 0 do
+              {:ok, out}
+            else
+              # Command failed but stderr was already printed to terminal
+              {:ok, out}
+            end
         end
 
       [] ->
