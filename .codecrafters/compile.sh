@@ -12,10 +12,19 @@ set -e # Exit on failure
 mix escript.build
 
 # Compile the raw_wrapper C program
-if command -v cc >/dev/null 2>&1; then
-  echo "[compile] C compiler found, compiling wrapper..."
-  cc -o /tmp/codecrafters-build-shell-elixir-wrapper c_src/raw_wrapper.c
-  echo "[compile] Wrapper compiled successfully"
+# Try gcc first, then cc
+COMPILER=""
+if command -v gcc >/dev/null 2>&1; then
+  COMPILER="gcc"
+  echo "[compile] gcc found, compiling wrapper..."
+elif command -v cc >/dev/null 2>&1; then
+  COMPILER="cc"
+  echo "[compile] cc found, compiling wrapper..."
+fi
+
+if [ -n "$COMPILER" ]; then
+  $COMPILER -o /tmp/codecrafters-build-shell-elixir-wrapper c_src/raw_wrapper.c
+  echo "[compile] Wrapper compiled successfully with $COMPILER"
   # Move escript to a different location
   mv codecrafters_shell /tmp/codecrafters-build-shell-elixir-escript
   # Create a wrapper script that calls the C wrapper with the escript
@@ -28,7 +37,7 @@ EOF
   chmod +x /tmp/codecrafters-build-shell-elixir
   echo "[compile] Created wrapper script at /tmp/codecrafters-build-shell-elixir"
 else
-  echo "[compile] No C compiler found, using escript directly"
+  echo "[compile] No C compiler found (tried gcc, cc), using escript directly"
   # No C compiler, just use escript directly
   mv codecrafters_shell /tmp/codecrafters-build-shell-elixir
 fi
