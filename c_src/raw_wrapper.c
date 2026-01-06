@@ -37,7 +37,8 @@ void enable_raw_mode() {
     struct termios raw = orig_termios;
     raw.c_lflag &= ~(ECHO | ICANON | ISIG | IEXTEN);
     raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-    raw.c_oflag &= ~(OPOST);
+    // Keep OPOST enabled so \n is converted to \r\n automatically
+    // raw.c_oflag &= ~(OPOST);
     raw.c_cflag |= (CS8);
     raw.c_cc[VMIN] = 1;
     raw.c_cc[VTIME] = 0;
