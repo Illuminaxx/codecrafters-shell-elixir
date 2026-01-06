@@ -36,14 +36,11 @@ defmodule CLI do
       ch == ?\n or ch == ?\r ->
         cmd = String.trim(current)
 
-        # Echo the command to stdout so the test can see what was "typed"
         if cmd != "" do
-          IO.puts(cmd)
           execute_command(cmd)
           IO.write(:standard_error, "$ ")
           loop("", history ++ [cmd], nil)
         else
-          IO.puts("")
           IO.write(:standard_error, "$ ")
           loop("", history, nil)
         end
