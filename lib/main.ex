@@ -214,17 +214,42 @@ defmodule CLI do
             {:error, "#{command}: command not found"}
 
           exec ->
-            opts = [stderr_to_stdout: true]
-            opts = if input, do: [{:input, input} | opts], else: opts
+            if input do
+              # Use Port to pipe input to command
+              port = Port.open({:spawn_executable, exec}, [
+                :binary,
+                :exit_status,
+                :stderr_to_stdout,
+                args: args
+              ])
 
-            case System.cmd(exec, args, opts) do
-              {output, 0} -> {:ok, output}
-              {output, _} -> {:ok, output}
+              Port.command(port, input)
+              Port.close(port)
+
+              result = collect_port_output(port, "")
+              {:ok, result}
+            else
+              # No input, use System.cmd
+              case System.cmd(exec, args, stderr_to_stdout: true) do
+                {output, 0} -> {:ok, output}
+                {output, _} -> {:ok, output}
+              end
             end
         end
 
       [] ->
         {:ok, ""}
+    end
+  end
+
+  defp collect_port_output(port, acc) do
+    receive do
+      {^port, {:data, data}} ->
+        collect_port_output(port, acc <> data)
+      {^port, {:exit_status, _}} ->
+        acc
+    after
+      5000 -> acc
     end
   end
 
