@@ -163,7 +163,6 @@ defmodule CLI do
 
     entries
     |> Enum.with_index(start_index)
-    |> Enum.reverse()
     |> Enum.each(fn {cmd, idx} ->
       IO.puts("#{String.pad_leading(Integer.to_string(idx), 5)}  #{cmd}")
     end)
