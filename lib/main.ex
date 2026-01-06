@@ -170,6 +170,16 @@ defmodule CLI do
   end
 
   defp execute_pipeline(cmd) do
+    # Special handling for tail -f to work around buffering issues
+    cmd = if String.contains?(cmd, "tail -f ") do
+      # Replace "tail -f file | ..." with a Python script that does unbuffered tail -f
+      Regex.replace(~r/tail -f (\S+)/, cmd, fn _, file_path ->
+        ~s[python3 -u -c "import sys,time;f=open('#{file_path}');sys.stdout.write(f.read());sys.stdout.flush();f.seek(0,2);\nwhile True:line=f.readline();\n if line:sys.stdout.write(line);sys.stdout.flush()\n else:time.sleep(0.1)" ]
+      end)
+    else
+      cmd
+    end
+
     # For pipelines, use the system shell to handle it via Port
     port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
       [:binary, :exit_status])
