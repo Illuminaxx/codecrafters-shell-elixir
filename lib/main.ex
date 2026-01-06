@@ -124,6 +124,15 @@ defmodule CLI do
   end
 
   defp execute_command(cmd, history) do
+    # Check if command contains pipes
+    if String.contains?(cmd, "|") do
+      execute_pipeline(cmd)
+    else
+      execute_single_command(cmd, history)
+    end
+  end
+
+  defp execute_single_command(cmd, history) do
     case String.split(cmd) do
       ["type", command] ->
         execute_type(command)
@@ -157,6 +166,65 @@ defmodule CLI do
 
       [] ->
         :ok
+    end
+  end
+
+  defp execute_pipeline(cmd) do
+    # Split by pipe, trim each command
+    commands =
+      cmd
+      |> String.split("|")
+      |> Enum.map(&String.trim/1)
+
+    case run_pipeline(commands, nil) do
+      {:ok, output} ->
+        IO.write(output)
+        unless String.ends_with?(output, "\n") do
+          IO.write("\n")
+        end
+      {:error, reason} ->
+        IO.puts("Error: #{reason}")
+    end
+  end
+
+  defp run_pipeline([last_cmd], input) do
+    # Last command in pipeline - return its output
+    case parse_and_execute(last_cmd, input) do
+      {:ok, output} -> {:ok, output}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp run_pipeline([cmd | rest], input) do
+    # Execute command and pass output to next
+    case parse_and_execute(cmd, input) do
+      {:ok, output} -> run_pipeline(rest, output)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp parse_and_execute(cmd, input) do
+    case String.split(cmd) do
+      ["echo" | rest] ->
+        {:ok, Enum.join(rest, " ") <> "\n"}
+
+      [command | args] ->
+        case System.find_executable(command) do
+          nil ->
+            {:error, "#{command}: command not found"}
+
+          exec ->
+            opts = [stderr_to_stdout: true]
+            opts = if input, do: [{:input, input} | opts], else: opts
+
+            case System.cmd(exec, args, opts) do
+              {output, 0} -> {:ok, output}
+              {output, _} -> {:ok, output}
+            end
+        end
+
+      [] ->
+        {:ok, ""}
     end
   end
 
