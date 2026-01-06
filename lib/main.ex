@@ -1,32 +1,21 @@
 defmodule CLI do
   def main(_args) do
-    # CRITICAL: Set IO options BEFORE any output
-    # This must happen first to configure stdin properly
-    :io.setopts(:standard_io, [
-      binary: true,
-      encoding: :latin1,
-      echo: false
-    ])
+    # Configure IO for binary input
+    :io.setopts(:standard_io, binary: true, encoding: :latin1)
 
-    # Write prompt after IO is configured
+    # Write prompt to stderr
     IO.write(:standard_error, "$ ")
 
     loop("", [], nil)
   end
 
   defp loop(current, history, cursor) do
-    # Use :io.get_chars which should give us raw bytes
+    # Read one character at a time
     ch = :io.get_chars(:standard_io, "", 1)
 
     case ch do
       <<byte>> ->
-        # Check if this might be start of ^[[A sequence (caret character)
-        if byte == ?^ do
-          # Might be UP ARROW as text ^[[A
-          handle_possible_text_arrow(current, history, cursor)
-        else
-          handle_char(byte, current, history, cursor)
-        end
+        handle_char(byte, current, history, cursor)
 
       :eof ->
         System.halt(0)
@@ -36,23 +25,13 @@ defmodule CLI do
     end
   end
 
-  defp handle_possible_text_arrow(current, history, cursor) do
-    # Read next 3 chars to see if it's [[A
-    case :io.get_chars(:standard_io, "", 3) do
-      "[[A" ->
-        # It's UP ARROW as text!
-        handle_up_arrow(current, history, cursor)
-
-      other ->
-        # Not an arrow, add all chars to current
-        loop(current <> "^" <> other, history, nil)
-    end
-  end
-
   defp handle_char(ch, current, history, cursor) do
     cond do
-      # Handle Enter - both \n and \r
+      # Handle Enter - in raw mode it's \r, in cooked mode it's \n
       ch == ?\n or ch == ?\r ->
+        # Echo newline in raw mode
+        if ch == ?\r, do: IO.write(:standard_error, "\r\n")
+
         cmd = String.trim(current)
 
         if cmd != "" do
@@ -64,16 +43,18 @@ defmodule CLI do
           loop("", history, nil)
         end
 
+      # ESC byte - start of arrow key sequence
       ch == 27 ->
-        # ESC - potential arrow key
         handle_escape(current, history, cursor)
 
+      # Other control characters - ignore
       ch < 32 ->
-        # Ignore other control characters
         loop(current, history, cursor)
 
+      # Regular character
       true ->
-        # Regular character - don't echo, just add to buffer
+        # Echo in raw mode
+        IO.write(:standard_error, <<ch>>)
         loop(current <> <<ch>>, history, nil)
     end
   end
@@ -104,6 +85,7 @@ defmodule CLI do
     if history == [] do
       loop(current, history, cursor)
     else
+      # Calculate new cursor position
       new_cursor =
         case cursor do
           nil -> length(history) - 1
@@ -114,20 +96,16 @@ defmodule CLI do
       recalled = Enum.at(history, new_cursor)
 
       if recalled do
-        # Clear current line on stderr
+        # Clear current line
         for _ <- 1..String.length(current) do
           IO.write(:standard_error, "\b \b")
         end
 
-        # Write the recalled command to stderr
+        # Write recalled command
         IO.write(:standard_error, recalled)
 
-        # Simulate pressing Enter by executing the command immediately
-        execute_command(recalled)
-        IO.write(:standard_error, "$ ")
-
-        # Don't add to history again since it's already there
-        loop("", history, nil)
+        # Continue loop with recalled command
+        loop(recalled, history, new_cursor)
       else
         loop(current, history, cursor)
       end
