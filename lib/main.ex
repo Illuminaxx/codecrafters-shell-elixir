@@ -7,16 +7,9 @@ defmodule CLI do
         _ -> nil  # Not a terminal, can't save settings
       end
 
-    # Disable echo only (not raw mode) to prevent terminal from displaying input
-    _echo_disabled =
-      case System.cmd("sh", ["-c", "stty -echo 2>/dev/null"], stderr_to_stdout: true) do
-        {_, 0} -> true
-        _ -> false
-      end
-
-    # Check if we successfully entered raw mode for escape sequences
+    # Put terminal in raw mode with -echo
     raw_mode =
-      case System.cmd("sh", ["-c", "stty raw 2>/dev/null"], stderr_to_stdout: true) do
+      case System.cmd("sh", ["-c", "stty raw -echo 2>/dev/null"], stderr_to_stdout: true) do
         {_, 0} -> true
         _ -> false  # Not in raw mode
       end
@@ -38,8 +31,9 @@ defmodule CLI do
   end
 
   defp loop(current, history, cursor, raw_mode) do
-    case :file.read(:standard_io, 1) do
-      {:ok, <<ch>>} -> handle_char(ch, current, history, cursor, raw_mode)
+    ch = :io.get_chars("", 1)
+    case ch do
+      <<byte>> -> handle_char(byte, current, history, cursor, raw_mode)
       _ -> loop(current, history, cursor, raw_mode)
     end
   end
@@ -75,11 +69,13 @@ defmodule CLI do
 
   defp handle_escape(current, history, cursor, raw_mode) do
     # Read the next byte after ESC
-    case :file.read(:standard_io, 1) do
-      {:ok, <<91>>} ->  # '[' is 91
+    byte1 = :io.get_chars("", 1)
+    case byte1 do
+      <<91>> ->  # '[' is 91
         # Read the third byte
-        case :file.read(:standard_io, 1) do
-          {:ok, <<65>>} ->  # 'A' is 65
+        byte2 = :io.get_chars("", 1)
+        case byte2 do
+          <<65>> ->  # 'A' is 65
             handle_up_arrow(current, history, cursor, raw_mode)
 
           _ ->
