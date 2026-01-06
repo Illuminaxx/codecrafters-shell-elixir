@@ -33,7 +33,10 @@ defmodule CLI do
   defp loop(current, history, cursor, raw_mode) do
     ch = :io.get_chars("", 1)
     case ch do
-      <<byte>> -> handle_char(byte, current, history, cursor, raw_mode)
+      <<byte>> ->
+        # Debug: log byte value to stderr
+        :io.format(:standard_error, "[DEBUG] Received byte: ~p~n", [byte])
+        handle_char(byte, current, history, cursor, raw_mode)
       _ -> loop(current, history, cursor, raw_mode)
     end
   end
