@@ -175,8 +175,9 @@ defmodule CLI do
     port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
       [:binary, :exit_status])
 
-    # Collect output with a timeout
-    output = collect_pipeline_output(port, "", 5000)
+    # Collect output with shorter timeout for responsiveness
+    # Especially for commands like "tail -f | head -n X" where head completes quickly
+    output = collect_pipeline_output(port, "", 100)
 
     IO.write(output)
     unless String.ends_with?(output, "\n") do
@@ -187,15 +188,23 @@ defmodule CLI do
   defp collect_pipeline_output(port, acc, timeout) do
     receive do
       {^port, {:data, data}} ->
+        # Reset timeout when we receive data
         collect_pipeline_output(port, acc <> data, timeout)
       {^port, {:exit_status, _}} ->
         # Process exited, flush any remaining data
         flush_pipeline_data(port, acc)
     after
       timeout ->
-        # Timeout - kill the port and return what we have
-        Port.close(port)
-        flush_pipeline_data(port, acc)
+        # Timeout - but keep collecting with shorter intervals
+        case flush_pipeline_data(port, acc) do
+          ^acc ->
+            # No new data, kill the port
+            Port.close(port)
+            flush_pipeline_data(port, acc)
+          new_acc ->
+            # Got more data, continue
+            collect_pipeline_output(port, new_acc, timeout)
+        end
     end
   end
 
