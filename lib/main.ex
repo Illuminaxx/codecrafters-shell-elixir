@@ -1,73 +1,93 @@
 defmodule CLI do
   def main(_args) do
-    # Open stdin as a raw file descriptor
-    {:ok, stdin} = :file.open(:standard_io, [:read, :binary, {:encoding, :latin1}])
+    # CRITICAL: Set IO options BEFORE any output
+    # This must happen first to configure stdin properly
+    :io.setopts(:standard_io, [
+      binary: true,
+      encoding: :latin1,
+      echo: false
+    ])
 
-    IO.write("$ ")
-    loop("", [], nil, stdin)
+    # Write prompt after IO is configured
+    IO.write(:standard_error, "$ ")
+
+    loop("", [], nil)
   end
 
-  defp loop(current, history, cursor, stdin) do
-    # Read one byte at a time using file:read
-    case :file.read(stdin, 1) do
-      {:ok, <<byte>>} ->
-        handle_char(byte, current, history, cursor, stdin)
+  defp loop(current, history, cursor) do
+    # Use :io.get_chars which should give us raw bytes
+    ch = :io.get_chars(:standard_io, "", 1)
+
+    case ch do
+      <<byte>> ->
+        handle_char(byte, current, history, cursor)
 
       :eof ->
         System.halt(0)
 
-      {:error, _} ->
-        loop(current, history, cursor, stdin)
+      _ ->
+        loop(current, history, cursor)
     end
   end
 
-  defp handle_char(ch, current, history, cursor, stdin) do
+  defp handle_char(ch, current, history, cursor) do
     cond do
-      # Handle both \n (cooked) and \r (raw) for Enter
+      # Handle Enter - both \n and \r
       ch == ?\n or ch == ?\r ->
+        # Echo newline to stderr to avoid interfering with test output
+        IO.write(:standard_error, "\n")
+
         cmd = String.trim(current)
 
         if cmd != "" do
           execute_command(cmd)
-          IO.write("$ ")
-          loop("", history ++ [cmd], nil, stdin)
+          IO.write(:standard_error, "$ ")
+          loop("", history ++ [cmd], nil)
         else
-          IO.write("$ ")
-          loop("", history, nil, stdin)
+          IO.write(:standard_error, "$ ")
+          loop("", history, nil)
         end
 
       ch == 27 ->
-        handle_escape(current, history, cursor, stdin)
+        # ESC - potential arrow key
+        handle_escape(current, history, cursor)
 
       ch < 32 ->
-        loop(current, history, cursor, stdin)
+        # Ignore other control characters
+        loop(current, history, cursor)
 
       true ->
-        loop(current <> <<ch>>, history, nil, stdin)
+        # Regular character - echo it to stderr
+        IO.write(:standard_error, <<ch>>)
+        loop(current <> <<ch>>, history, nil)
     end
   end
 
-  defp handle_escape(current, history, cursor, stdin) do
-    # Read the next byte after ESC
-    case :file.read(stdin, 1) do
-      {:ok, <<91>>} ->  # '[' is 91
-        # Read the third byte
-        case :file.read(stdin, 1) do
-          {:ok, <<65>>} ->  # 'A' is 65
-            handle_up_arrow(current, history, cursor, stdin)
+  defp handle_escape(current, history, cursor) do
+    # Read next byte
+    byte1 = :io.get_chars(:standard_io, "", 1)
+
+    case byte1 do
+      <<91>> ->  # '[' is 91
+        # Read third byte
+        byte2 = :io.get_chars(:standard_io, "", 1)
+
+        case byte2 do
+          <<65>> ->  # 'A' is 65 - UP ARROW
+            handle_up_arrow(current, history, cursor)
 
           _ ->
-            loop(current, history, cursor, stdin)
+            loop(current, history, cursor)
         end
 
       _ ->
-        loop(current, history, cursor, stdin)
+        loop(current, history, cursor)
     end
   end
 
-  defp handle_up_arrow(current, history, cursor, stdin) do
+  defp handle_up_arrow(current, history, cursor) do
     if history == [] do
-      loop(current, history, cursor, stdin)
+      loop(current, history, cursor)
     else
       new_cursor =
         case cursor do
@@ -79,21 +99,24 @@ defmodule CLI do
       recalled = Enum.at(history, new_cursor)
 
       if recalled do
-        # Clear current line
+        # Clear current line on stderr
         for _ <- 1..String.length(current) do
-          IO.write("\b \b")
+          IO.write(:standard_error, "\b \b")
         end
 
-        IO.write(recalled)
-        loop(recalled, history, new_cursor, stdin)
+        IO.write(:standard_error, recalled)
+        loop(recalled, history, new_cursor)
       else
-        loop(current, history, cursor, stdin)
+        loop(current, history, cursor)
       end
     end
   end
 
   defp execute_command("exit"), do: System.halt(0)
-  defp execute_command("pwd"), do: IO.puts(File.cwd!())
+
+  defp execute_command("pwd") do
+    IO.puts(File.cwd!())
+  end
 
   defp execute_command(cmd) do
     case String.split(cmd) do
