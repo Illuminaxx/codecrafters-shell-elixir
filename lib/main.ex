@@ -35,7 +35,7 @@ defmodule CLI do
         cmd = String.trim(current)
 
         if cmd != "" do
-          execute_command(cmd)
+          execute_command(cmd, history)
           IO.write(:standard_error, "$ ")
           loop("", history ++ [cmd], nil)
         else
@@ -115,14 +115,25 @@ defmodule CLI do
     end
   end
 
-  defp execute_command("exit"), do: System.halt(0)
+  defp execute_command("exit", _history), do: System.halt(0)
 
-  defp execute_command("pwd") do
+  defp execute_command("pwd", _history) do
     IO.puts(File.cwd!())
   end
 
-  defp execute_command(cmd) do
+  defp execute_command(cmd, history) do
     case String.split(cmd) do
+      ["history"] ->
+        # Show all history
+        print_history(history, nil)
+
+      ["history", n_str] ->
+        # Show last N entries
+        case Integer.parse(n_str) do
+          {n, ""} -> print_history(history, n)
+          _ -> IO.puts("history: #{n_str}: numeric argument required")
+        end
+
       ["echo" | rest] ->
         IO.puts(Enum.join(rest, " "))
 
@@ -142,5 +153,16 @@ defmodule CLI do
       [] ->
         :ok
     end
+  end
+
+  defp print_history(history, limit) do
+    entries = if limit, do: Enum.take(history, -limit), else: history
+    start_index = length(history) - length(entries) + 1
+
+    entries
+    |> Enum.with_index(start_index)
+    |> Enum.each(fn {cmd, idx} ->
+      IO.puts("#{String.pad_leading(Integer.to_string(idx), 5)}  #{cmd}")
+    end)
   end
 end
