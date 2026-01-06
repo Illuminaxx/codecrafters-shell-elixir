@@ -259,6 +259,11 @@ defmodule CLI do
     # Execute command and redirect stderr to file
     # Use shell redirection to capture stderr
     case String.split(cmd) do
+      ["echo" | rest] ->
+        # Echo is a builtin - just print to stdout (stderr redirection has no effect)
+        IO.puts(Enum.join(rest, " "))
+        :ok
+
       [command | args] ->
         case System.find_executable(command) do
           nil ->
