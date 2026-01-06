@@ -170,99 +170,14 @@ defmodule CLI do
   end
 
   defp execute_pipeline(cmd) do
-    # Split by pipe, trim each command
-    commands =
-      cmd
-      |> String.split("|")
-      |> Enum.map(&String.trim/1)
-
-    case run_pipeline(commands, nil) do
-      {:ok, output} ->
+    # For pipelines, use the system shell to handle it
+    # This is simpler and more reliable than manual piping
+    case System.cmd("sh", ["-c", cmd], stderr_to_stdout: true) do
+      {output, _} ->
         IO.write(output)
         unless String.ends_with?(output, "\n") do
           IO.write("\n")
         end
-      {:error, reason} ->
-        IO.puts("Error: #{reason}")
-    end
-  end
-
-  defp run_pipeline([last_cmd], input) do
-    # Last command in pipeline - return its output
-    case parse_and_execute(last_cmd, input) do
-      {:ok, output} -> {:ok, output}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp run_pipeline([cmd | rest], input) do
-    # Execute command and pass output to next
-    case parse_and_execute(cmd, input) do
-      {:ok, output} -> run_pipeline(rest, output)
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp parse_and_execute(cmd, input) do
-    case String.split(cmd) do
-      ["echo" | rest] ->
-        {:ok, Enum.join(rest, " ") <> "\n"}
-
-      [command | args] ->
-        case System.find_executable(command) do
-          nil ->
-            {:error, "#{command}: command not found"}
-
-          exec ->
-            if input do
-              # Use Port to pipe input to command
-              port = Port.open({:spawn_executable, exec}, [
-                :binary,
-                :exit_status,
-                args: args
-              ])
-
-              # Send input
-              Port.command(port, input)
-              # Close stdin to signal EOF
-              send(port, {self(), :close})
-
-              # Collect output
-              result = collect_port_output(port, "")
-              {:ok, result}
-            else
-              # No input, use System.cmd
-              case System.cmd(exec, args, stderr_to_stdout: true) do
-                {output, 0} -> {:ok, output}
-                {output, _} -> {:ok, output}
-              end
-            end
-        end
-
-      [] ->
-        {:ok, ""}
-    end
-  end
-
-  defp collect_port_output(port, acc) do
-    receive do
-      {^port, {:data, data}} ->
-        collect_port_output(port, acc <> data)
-      {^port, {:exit_status, _status}} ->
-        # Collect any remaining data
-        flush_port_data(port, acc)
-    after
-      5000 ->
-        flush_port_data(port, acc)
-    end
-  end
-
-  defp flush_port_data(port, acc) do
-    receive do
-      {^port, {:data, data}} ->
-        flush_port_data(port, acc <> data)
-    after
-      0 -> acc
     end
   end
 
