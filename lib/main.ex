@@ -34,9 +34,6 @@ defmodule CLI do
 
         cmd = String.trim(current)
 
-        # Debug: log the command
-        IO.write(:standard_error, "[DEBUG] Command received: '#{cmd}'\n")
-
         if cmd != "" do
           execute_command(cmd)
           IO.write(:standard_error, "$ ")
@@ -56,7 +53,8 @@ defmodule CLI do
 
       # Regular character
       true ->
-        # Don't echo - we're in raw mode but the test doesn't expect to see typing
+        # Echo in raw mode so user sees what they type
+        IO.write(:standard_error, <<ch>>)
         loop(current <> <<ch>>, history, nil)
     end
   end
