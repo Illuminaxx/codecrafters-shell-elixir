@@ -119,8 +119,15 @@ defmodule CLI do
           IO.write(:standard_error, "\b \b")
         end
 
+        # Write the recalled command to stderr
         IO.write(:standard_error, recalled)
-        loop(recalled, history, new_cursor)
+
+        # Simulate pressing Enter by executing the command immediately
+        execute_command(recalled)
+        IO.write(:standard_error, "$ ")
+
+        # Don't add to history again since it's already there
+        loop("", history, nil)
       else
         loop(current, history, cursor)
       end
