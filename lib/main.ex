@@ -34,16 +34,16 @@ defmodule CLI do
     cond do
       # Handle Enter - both \n and \r
       ch == ?\n or ch == ?\r ->
-        # Echo newline to stderr to avoid interfering with test output
-        IO.write(:standard_error, "\n")
-
         cmd = String.trim(current)
 
+        # Echo the command to stdout so the test can see what was "typed"
         if cmd != "" do
+          IO.puts(cmd)
           execute_command(cmd)
           IO.write(:standard_error, "$ ")
           loop("", history ++ [cmd], nil)
         else
+          IO.puts("")
           IO.write(:standard_error, "$ ")
           loop("", history, nil)
         end
