@@ -175,9 +175,8 @@ defmodule CLI do
     port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
       [:binary, :exit_status])
 
-    # Collect output with shorter timeout for responsiveness
-    # Especially for commands like "tail -f | head -n X" where head completes quickly
-    output = collect_pipeline_output(port, "", 100)
+    # Collect output - wait for pipeline to complete or timeout (10 seconds)
+    output = collect_pipeline_output(port, "")
 
     IO.write(output)
     unless String.ends_with?(output, "\n") do
@@ -185,45 +184,20 @@ defmodule CLI do
     end
   end
 
-  defp collect_pipeline_output(port, acc, timeout) do
+  defp collect_pipeline_output(port, acc) do
     receive do
       {^port, {:data, data}} ->
-        # Got data, continue with same timeout
-        collect_pipeline_output(port, acc <> data, timeout)
+        # Got data, keep collecting
+        collect_pipeline_output(port, acc <> data)
       {^port, {:exit_status, _}} ->
-        # Process exited normally, flush any remaining data
+        # Process exited, flush any remaining data and return
         flush_pipeline_data(port, acc)
     after
-      timeout ->
-        # No data for timeout period - check if we got any data at all
-        if acc == "" do
-          # No data yet, wait longer (up to 10 seconds total)
-          collect_pipeline_output(port, acc, 1000)
-        else
-          # We have some data, but no new data for 100ms
-          # For commands like "tail -f | head -n X", the pipeline might be waiting
-          # for more data to be written to the file. Keep waiting with longer timeout.
-          collect_pipeline_with_retries(port, acc, 50)
-        end
+      10000 ->
+        # 10 second timeout - kill port and return what we have
+        Port.close(port)
+        flush_pipeline_data(port, acc)
     end
-  end
-
-  defp collect_pipeline_with_retries(port, acc, retries) when retries > 0 do
-    case flush_pipeline_data(port, acc) do
-      ^acc ->
-        # No new data, wait a bit and retry
-        :timer.sleep(100)
-        collect_pipeline_with_retries(port, acc, retries - 1)
-      new_acc ->
-        # Got more data, reset retries
-        collect_pipeline_output(port, new_acc, 100)
-    end
-  end
-
-  defp collect_pipeline_with_retries(port, acc, 0) do
-    # Out of retries, kill the port and return what we have
-    Port.close(port)
-    flush_pipeline_data(port, acc)
   end
 
   defp flush_pipeline_data(port, acc) do
