@@ -1,22 +1,26 @@
 defmodule CLI do
   def main(_args) do
-    # Enable raw mode using NIF
-    case TTY.enable_raw_mode() do
-      :ok -> :ok
-      {:error, _reason} -> :ok  # Continue even if raw mode fails
-    end
+    # Try to enable raw mode on the IO device
+    # This works if stdin is connected to a terminal
+    try do
+      # Get the group leader (IO server)
+      group_leader = Process.group_leader()
 
-    # Configure IO for binary input
-    :io.setopts(:standard_io, binary: true, encoding: :latin1)
+      # Try to put the terminal in raw mode using Erlang's internal functions
+      # This bypasses the need for external stty
+      :io.setopts(group_leader, [binary: true, encoding: :latin1])
+
+      # Try to set raw mode on standard_io
+      case :io.setopts(:standard_io, binary: true, encoding: :latin1, echo: false) do
+        :ok -> :ok
+        _ -> :ok
+      end
+    catch
+      _, _ -> :ok
+    end
 
     IO.write("$ ")
-
-    try do
-      loop("", [], nil)
-    after
-      # Restore terminal on exit
-      TTY.disable_raw_mode()
-    end
+    loop("", [], nil)
   end
 
   defp loop(current, history, cursor) do
@@ -29,9 +33,9 @@ defmodule CLI do
 
   defp handle_char(ch, current, history, cursor) do
     cond do
-      # In raw mode, Enter sends \r (13), in cooked mode it sends \n (10)
+      # Handle both \n (cooked) and \r (raw) for Enter
       ch == ?\n or ch == ?\r ->
-        # Echo newline in raw mode
+        # Only echo newline if we got \r (raw mode)
         if ch == ?\r, do: IO.write("\r\n")
 
         cmd = String.trim(current)
@@ -52,8 +56,6 @@ defmodule CLI do
         loop(current, history, cursor)
 
       true ->
-        # Echo the character in raw mode
-        IO.write(<<ch>>)
         loop(current <> <<ch>>, history, nil)
     end
   end
