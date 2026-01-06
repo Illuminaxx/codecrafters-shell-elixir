@@ -124,10 +124,17 @@ defmodule CLI do
   end
 
   defp execute_command(cmd, history) do
-    # Check if command contains pipes
+    # Check if command contains pipes or redirections
+    # Check for specific redirection operators in order of precedence
     cond do
       String.contains?(cmd, "|") ->
         execute_pipeline(cmd)
+
+      String.contains?(cmd, "2>>") ->
+        execute_with_stderr_append_redirect(cmd, history)
+
+      String.contains?(cmd, "2>") ->
+        execute_with_stderr_redirect(cmd, history)
 
       String.contains?(cmd, ">>") ->
         execute_with_append_redirect(cmd, history)
@@ -184,6 +191,42 @@ defmodule CLI do
     end
   end
 
+  defp execute_with_stderr_redirect(cmd, _history) do
+    # Parse "command args 2> file"
+    case String.split(cmd, "2>", parts: 2) do
+      [command_part, file_part] ->
+        command_part = String.trim(command_part)
+        file_path = String.trim(file_part)
+
+        # Execute command and capture stderr
+        case execute_command_for_stderr_redirect(command_part, file_path, false) do
+          :ok -> :ok
+          {:error, _} -> :ok
+        end
+
+      _ ->
+        IO.puts("Invalid redirect syntax")
+    end
+  end
+
+  defp execute_with_stderr_append_redirect(cmd, _history) do
+    # Parse "command args 2>> file"
+    case String.split(cmd, "2>>", parts: 2) do
+      [command_part, file_part] ->
+        command_part = String.trim(command_part)
+        file_path = String.trim(file_part)
+
+        # Execute command and capture stderr
+        case execute_command_for_stderr_redirect(command_part, file_path, true) do
+          :ok -> :ok
+          {:error, _} -> :ok
+        end
+
+      _ ->
+        IO.puts("Invalid redirect syntax")
+    end
+  end
+
   defp execute_command_for_redirect(cmd) do
     # Execute command and return output
     case String.split(cmd) do
@@ -209,6 +252,29 @@ defmodule CLI do
 
       [] ->
         {:ok, ""}
+    end
+  end
+
+  defp execute_command_for_stderr_redirect(cmd, file_path, append) do
+    # Execute command and redirect stderr to file
+    # Use shell redirection to capture stderr
+    case String.split(cmd) do
+      [command | args] ->
+        case System.find_executable(command) do
+          nil ->
+            IO.puts("#{command}: command not found")
+            {:error, :not_found}
+
+          exec ->
+            # Use shell to handle stderr redirection
+            redirect_op = if append, do: "2>>", else: "2>"
+            shell_cmd = "#{exec} #{Enum.join(args, " ")} #{redirect_op} #{file_path}"
+            System.cmd("sh", ["-c", shell_cmd])
+            :ok
+        end
+
+      [] ->
+        :ok
     end
   end
 
