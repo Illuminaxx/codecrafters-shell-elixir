@@ -1,54 +1,62 @@
 defmodule CLI do
   def main(_args) do
+    # Try to save original terminal settings
+    original_settings =
+      case System.cmd("sh", ["-c", "stty -g 2>/dev/null"], stderr_to_stdout: true) do
+        {settings, 0} -> String.trim(settings)
+        _ -> nil  # Not a terminal, can't save settings
+      end
+
+    # Set terminal to raw mode if possible
+    case System.cmd("sh", ["-c", "stty raw -echo 2>/dev/null"], stderr_to_stdout: true) do
+      {_, 0} -> :ok
+      _ -> :ok  # Ignore if stty fails (not a terminal)
+    end
+
     # Configure IO options
     :io.setopts(:standard_io, binary: true, encoding: :latin1)
 
-    # Try to disable echo (may not work in all environments)
-    :io.setopts(:standard_io, echo: false)
-
     IO.write("$ ")
-    loop("", [], nil)
+
+    # Ensure terminal is restored on exit
+    try do
+      loop("", [], nil)
+    after
+      # Restore original terminal settings if we saved them
+      if original_settings do
+        System.cmd("sh", ["-c", "stty #{original_settings} 2>/dev/null"], stderr_to_stdout: true)
+      end
+    end
   end
 
   defp loop(current, history, cursor) do
-    # Check if current ends with ^[[ (Windows bash escape sequence start)
-    if String.ends_with?(current, "^[[") do
-      # Read next char to see if it's A (up arrow)
-      case IO.getn("", 1) do
-        "A" ->
-          # Remove ^[[ from current and handle up arrow
-          trimmed = String.slice(current, 0..-4//1)
-          handle_up_arrow(trimmed, history, cursor)
+    case IO.getn("", 1) do
+      # In raw mode, Enter key sends \r (carriage return)
+      char when char == "\n" or char == "\r" ->
+        IO.write("\r\n")  # Move to new line
+        cmd = String.trim(current)
 
-        other ->
-          loop(current <> other, history, cursor)
-      end
-    else
-      case IO.getn("", 1) do
-        "\n" ->
-          cmd = String.trim(current)
+        if cmd != "" do
+          execute_command(cmd)
+          IO.write("$ ")
+          loop("", history ++ [cmd], nil)
+        else
+          IO.write("$ ")
+          loop("", history, nil)
+        end
 
-          if cmd != "" do
-            execute_command(cmd)
-            IO.write("$ ")
-            loop("", history ++ [cmd], nil)
-          else
-            IO.write("$ ")
-            loop("", history, nil)
-          end
+      <<27>> ->
+        handle_escape(current, history, cursor)
 
-        <<27>> ->
-          handle_escape(current, history, cursor)
+      <<c>> when c < 32 ->
+        loop(current, history, cursor)
 
-        <<c>> when c < 32 and c != ?\n ->
-          loop(current, history, cursor)
+      <<c>> ->
+        IO.write(<<c>>)  # Echo the character since we're in raw mode
+        loop(current <> <<c>>, history, nil)
 
-        <<c>> ->
-          loop(current <> <<c>>, history, nil)
-
-        _ ->
-          loop(current, history, cursor)
-      end
+      _ ->
+        loop(current, history, cursor)
     end
   end
 
