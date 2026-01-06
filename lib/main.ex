@@ -34,6 +34,9 @@ defmodule CLI do
 
         cmd = String.trim(current)
 
+        # Debug: log the command
+        IO.write(:standard_error, "[DEBUG] Command received: '#{cmd}'\n")
+
         if cmd != "" do
           execute_command(cmd)
           IO.write(:standard_error, "$ ")
