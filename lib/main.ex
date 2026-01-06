@@ -170,29 +170,86 @@ defmodule CLI do
   end
 
   defp execute_pipeline(cmd) do
-    # Special handling for tail -f to work around buffering issues
-    cmd = if String.contains?(cmd, "tail -f ") do
-      # Replace "tail -f file | ..." with a Python script that does unbuffered tail -f
-      Regex.replace(~r/tail -f (\S+)/, cmd, fn _, file_path ->
-        ~s[python3 -u -c "import sys,time;f=open('#{file_path}');sys.stdout.write(f.read());sys.stdout.flush();f.seek(0,2);\nwhile True:line=f.readline();\n if line:sys.stdout.write(line);sys.stdout.flush()\n else:time.sleep(0.1)" ]
-      end)
-    else
-      cmd
+    # Check if this is a "tail -f file | head -n N" pattern
+    output = case Regex.run(~r/^tail -f (\S+) \| head -n (\d+)$/, String.trim(cmd)) do
+      [_, file_path, n_str] ->
+        # Handle tail -f specially to avoid buffering issues
+        {n, ""} = Integer.parse(n_str)
+        execute_tail_follow(file_path, n)
+        ""
+
+      _ ->
+        # For other pipelines, use the system shell to handle it via Port
+        port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
+          [:binary, :exit_status])
+
+        max_retries = 100
+        collect_pipeline_output(port, "", 0, max_retries)
     end
-
-    # For pipelines, use the system shell to handle it via Port
-    port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
-      [:binary, :exit_status])
-
-    # Collect output - if tail -f is present, wait longer for file modifications
-    max_retries = if String.contains?(cmd, "tail -f"), do: 300, else: 100
-    output = collect_pipeline_output(port, "", 0, max_retries)
 
     IO.write(output)
     unless String.ends_with?(output, "\n") do
       IO.write("\n")
     end
   end
+
+  defp execute_tail_follow(file_path, n) do
+    # Read existing contents and output them
+    case File.read(file_path) do
+      {:ok, content} ->
+        lines = String.split(content, "\n", trim: true)
+
+        # Output existing lines
+        Enum.each(lines, fn line ->
+          IO.puts(line)
+        end)
+
+        lines_output = length(lines)
+
+        if lines_output < n do
+          # Need to wait for more lines
+          follow_file_for_more_lines(file_path, lines_output, n)
+        end
+
+      {:error, _} ->
+        IO.puts("tail: cannot open '#{file_path}' for reading: No such file or directory")
+    end
+  end
+
+  defp follow_file_for_more_lines(file_path, current_count, target_count) do
+    # Poll the file for new lines (simulating tail -f behavior)
+    case File.read(file_path) do
+      {:ok, content} ->
+        lines = String.split(content, "\n", trim: true)
+        new_lines = Enum.drop(lines, current_count)
+
+        if length(new_lines) > 0 do
+          # Output new lines
+          lines_to_output = Enum.take(new_lines, target_count - current_count)
+          Enum.each(lines_to_output, fn line ->
+            IO.puts(line)
+          end)
+
+          new_count = current_count + length(lines_to_output)
+
+          if new_count < target_count do
+            # Still need more lines, wait and retry
+            :timer.sleep(100)
+            follow_file_for_more_lines(file_path, new_count, target_count)
+          end
+        else
+          # No new lines yet, wait and retry (max 30 seconds)
+          if current_count < target_count do
+            :timer.sleep(100)
+            follow_file_for_more_lines(file_path, current_count, target_count)
+          end
+        end
+
+      {:error, _} ->
+        :ok
+    end
+  end
+
 
   defp collect_pipeline_output(port, acc, retries, max_retries) do
     receive do
