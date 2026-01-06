@@ -29,8 +29,8 @@ defmodule CLI do
     cond do
       # Handle Enter - in raw mode it's \r, in cooked mode it's \n
       ch == ?\n or ch == ?\r ->
-        # Echo newline in raw mode
-        if ch == ?\r, do: IO.write(:standard_error, "\r\n")
+        # Echo newline (OPOST will convert \n to \r\n)
+        IO.write(:standard_error, "\n")
 
         cmd = String.trim(current)
 
