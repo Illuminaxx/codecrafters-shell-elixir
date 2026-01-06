@@ -125,10 +125,84 @@ defmodule CLI do
 
   defp execute_command(cmd, history) do
     # Check if command contains pipes
-    if String.contains?(cmd, "|") do
-      execute_pipeline(cmd)
-    else
-      execute_single_command(cmd, history)
+    cond do
+      String.contains?(cmd, "|") ->
+        execute_pipeline(cmd)
+
+      String.contains?(cmd, ">>") ->
+        execute_with_append_redirect(cmd, history)
+
+      String.contains?(cmd, ">") ->
+        execute_with_redirect(cmd, history)
+
+      true ->
+        execute_single_command(cmd, history)
+    end
+  end
+
+  defp execute_with_redirect(cmd, _history) do
+    # Parse "command args > file"
+    case String.split(cmd, ">", parts: 2) do
+      [command_part, file_part] ->
+        command_part = String.trim(command_part)
+        file_path = String.trim(file_part)
+
+        # Execute command and capture output
+        case execute_command_for_redirect(command_part) do
+          {:ok, output} ->
+            # Write output to file (overwrite)
+            File.write!(file_path, output)
+
+          {:error, _} ->
+            :ok
+        end
+
+      _ ->
+        IO.puts("Invalid redirect syntax")
+    end
+  end
+
+  defp execute_with_append_redirect(cmd, _history) do
+    # Parse "command args >> file"
+    case String.split(cmd, ">>", parts: 2) do
+      [command_part, file_part] ->
+        command_part = String.trim(command_part)
+        file_path = String.trim(file_part)
+
+        # Execute command and capture output
+        case execute_command_for_redirect(command_part) do
+          {:ok, output} ->
+            # Append output to file
+            File.write!(file_path, output, [:append])
+
+          {:error, _} ->
+            :ok
+        end
+
+      _ ->
+        IO.puts("Invalid redirect syntax")
+    end
+  end
+
+  defp execute_command_for_redirect(cmd) do
+    # Execute command and return output
+    case String.split(cmd) do
+      ["echo" | rest] ->
+        {:ok, Enum.join(rest, " ") <> "\n"}
+
+      [command | args] ->
+        case System.find_executable(command) do
+          nil ->
+            IO.puts("#{command}: command not found")
+            {:error, :not_found}
+
+          exec ->
+            {out, _} = System.cmd(exec, args, stderr_to_stdout: true)
+            {:ok, out}
+        end
+
+      [] ->
+        {:ok, ""}
     end
   end
 
