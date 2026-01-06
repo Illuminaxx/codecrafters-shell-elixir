@@ -172,7 +172,13 @@ defmodule CLI do
   defp execute_pipeline(cmd) do
     # For pipelines, use the system shell to handle it via Port
     # This allows us to handle commands that don't terminate (like tail -f)
-    port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
+    escaped_cmd = String.replace(cmd, "'", "'\\''")
+    shell_cmd = "sh -c '#{escaped_cmd}'"
+
+    # Debug: log the command being executed
+    IO.write(:standard_error, "[DEBUG] Executing: #{shell_cmd}\n")
+
+    port = Port.open({:spawn, shell_cmd},
       [:binary, :exit_status])
 
     # Collect output - wait for pipeline to complete or timeout (10 seconds)
