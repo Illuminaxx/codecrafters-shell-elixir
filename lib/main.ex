@@ -125,6 +125,9 @@ defmodule CLI do
 
   defp execute_command(cmd, history) do
     case String.split(cmd) do
+      ["type", command] ->
+        execute_type(command)
+
       ["history"] ->
         # Show all history
         print_history(history, nil)
@@ -166,5 +169,20 @@ defmodule CLI do
     |> Enum.each(fn {cmd, idx} ->
       IO.puts("#{String.pad_leading(Integer.to_string(idx), 5)}  #{cmd}")
     end)
+  end
+
+  defp execute_type(command) do
+    builtins = ["exit", "echo", "type", "pwd", "cd", "history"]
+
+    cond do
+      command in builtins ->
+        IO.puts("#{command} is a shell builtin")
+
+      path = System.find_executable(command) ->
+        IO.puts("#{command} is #{path}")
+
+      true ->
+        IO.puts("#{command}: not found")
+    end
   end
 end
