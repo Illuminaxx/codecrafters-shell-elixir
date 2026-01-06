@@ -20,13 +20,32 @@ defmodule CLI do
 
     case ch do
       <<byte>> ->
-        handle_char(byte, current, history, cursor)
+        # Check if this might be start of ^[[A sequence (caret character)
+        if byte == ?^ do
+          # Might be UP ARROW as text ^[[A
+          handle_possible_text_arrow(current, history, cursor)
+        else
+          handle_char(byte, current, history, cursor)
+        end
 
       :eof ->
         System.halt(0)
 
       _ ->
         loop(current, history, cursor)
+    end
+  end
+
+  defp handle_possible_text_arrow(current, history, cursor) do
+    # Read next 3 chars to see if it's [[A
+    case :io.get_chars(:standard_io, "", 3) do
+      "[[A" ->
+        # It's UP ARROW as text!
+        handle_up_arrow(current, history, cursor)
+
+      other ->
+        # Not an arrow, add all chars to current
+        loop(current <> "^" <> other, history, nil)
     end
   end
 
