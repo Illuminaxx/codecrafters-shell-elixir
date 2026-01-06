@@ -172,8 +172,9 @@ defmodule CLI do
   defp execute_pipeline(cmd) do
     # For pipelines, use the system shell to handle it via Port
     # This allows us to handle commands that don't terminate (like tail -f)
-    port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
-      [:binary, :exit_status])
+    # Use stdbuf to disable buffering for more responsive output
+    port = Port.open({:spawn, "stdbuf -o0 sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
+      [:binary, :exit_status, :stream])
 
     # Collect output - wait for pipeline to complete or timeout (10 seconds)
     output = collect_pipeline_output(port, "")
