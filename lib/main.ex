@@ -34,8 +34,10 @@ defmodule CLI do
     ch = :io.get_chars("", 1)
     case ch do
       <<byte>> ->
-        # Debug: log byte value to stderr
-        :io.format(:standard_error, "[DEBUG] Received byte: ~p~n", [byte])
+        # Debug: log only ESC and following bytes
+        if byte == 27 or byte == 91 or byte == 65 do
+          :io.format(:standard_error, "[DEBUG] Byte: ~p (~c)~n", [byte, if(byte >= 32, do: byte, else: ??)])
+        end
         handle_char(byte, current, history, cursor, raw_mode)
       _ -> loop(current, history, cursor, raw_mode)
     end
