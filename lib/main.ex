@@ -171,16 +171,12 @@ defmodule CLI do
 
   defp execute_pipeline(cmd) do
     # For pipelines, use the system shell to handle it via Port
-    # This allows us to handle commands that don't terminate (like tail -f)
-    # Use script -c to create a pseudo-TTY to disable buffering
-    escaped_cmd = String.replace(cmd, "'", "'\\''")
-    shell_cmd = "script -q -c '#{escaped_cmd}' /dev/null"
-
-    port = Port.open({:spawn, shell_cmd},
+    port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
       [:binary, :exit_status])
 
-    # Collect output - wait for pipeline to complete or timeout (10 seconds)
-    output = collect_pipeline_output(port, "")
+    # Collect output - if tail -f is present, wait longer for file modifications
+    max_retries = if String.contains?(cmd, "tail -f"), do: 300, else: 100
+    output = collect_pipeline_output(port, "", 0, max_retries)
 
     IO.write(output)
     unless String.ends_with?(output, "\n") do
@@ -188,22 +184,22 @@ defmodule CLI do
     end
   end
 
-  defp collect_pipeline_output(port, acc, retries \\ 0) do
+  defp collect_pipeline_output(port, acc, retries, max_retries) do
     receive do
       {^port, {:data, data}} ->
         # Got data, keep collecting with retries reset
-        collect_pipeline_output(port, acc <> data, 0)
+        collect_pipeline_output(port, acc <> data, 0, max_retries)
       {^port, {:exit_status, _}} ->
         # Process exited, flush any remaining data and return
         flush_pipeline_data(port, acc)
     after
       100 ->
         # No data for 100ms
-        if retries < 100 do
-          # Keep waiting - up to 10 seconds total (100 * 100ms)
-          collect_pipeline_output(port, acc, retries + 1)
+        if retries < max_retries do
+          # Keep waiting
+          collect_pipeline_output(port, acc, retries + 1, max_retries)
         else
-          # Timeout after 10 seconds - kill port and return what we have
+          # Timeout - kill port and return what we have
           Port.close(port)
           flush_pipeline_data(port, acc)
         end
