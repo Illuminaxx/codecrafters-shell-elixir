@@ -201,8 +201,9 @@ defmodule CLI do
           collect_pipeline_output(port, acc, 1000)
         else
           # We have some data, but no new data for 100ms
-          # Try a few more times before giving up
-          collect_pipeline_with_retries(port, acc, 5)
+          # For commands like "tail -f | head -n X", the pipeline might be waiting
+          # for more data to be written to the file. Keep waiting with longer timeout.
+          collect_pipeline_with_retries(port, acc, 50)
         end
     end
   end
