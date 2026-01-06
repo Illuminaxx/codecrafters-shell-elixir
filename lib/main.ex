@@ -96,9 +96,12 @@ defmodule CLI do
       recalled = Enum.at(history, new_cursor)
 
       if recalled do
-        # Clear current line
-        for _ <- 1..String.length(current) do
-          IO.write(:standard_error, "\b \b")
+        # Clear current line if needed
+        current_len = String.length(current)
+        if current_len > 0 do
+          for _ <- 1..current_len do
+            IO.write(:standard_error, "\b \b")
+          end
         end
 
         # Write recalled command
