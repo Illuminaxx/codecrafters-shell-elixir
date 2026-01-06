@@ -172,9 +172,8 @@ defmodule CLI do
   defp execute_pipeline(cmd) do
     # For pipelines, use the system shell to handle it via Port
     # This allows us to handle commands that don't terminate (like tail -f)
-    # Use stdbuf to disable buffering for more responsive output
-    port = Port.open({:spawn, "stdbuf -o0 sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
-      [:binary, :exit_status, :stream])
+    port = Port.open({:spawn, "sh -c '#{String.replace(cmd, "'", "'\\''")}'"},
+      [:binary, :exit_status])
 
     # Collect output - wait for pipeline to complete or timeout (10 seconds)
     output = collect_pipeline_output(port, "")
@@ -185,19 +184,25 @@ defmodule CLI do
     end
   end
 
-  defp collect_pipeline_output(port, acc) do
+  defp collect_pipeline_output(port, acc, retries \\ 0) do
     receive do
       {^port, {:data, data}} ->
-        # Got data, keep collecting
-        collect_pipeline_output(port, acc <> data)
+        # Got data, keep collecting with retries reset
+        collect_pipeline_output(port, acc <> data, 0)
       {^port, {:exit_status, _}} ->
         # Process exited, flush any remaining data and return
         flush_pipeline_data(port, acc)
     after
-      10000 ->
-        # 10 second timeout - kill port and return what we have
-        Port.close(port)
-        flush_pipeline_data(port, acc)
+      100 ->
+        # No data for 100ms
+        if retries < 100 do
+          # Keep waiting - up to 10 seconds total (100 * 100ms)
+          collect_pipeline_output(port, acc, retries + 1)
+        else
+          # Timeout after 10 seconds - kill port and return what we have
+          Port.close(port)
+          flush_pipeline_data(port, acc)
+        end
     end
   end
 
