@@ -7,15 +7,22 @@ defmodule CLI do
         _ -> nil  # Not a terminal, can't save settings
       end
 
-    # Check if we successfully entered raw mode
+    # Disable echo only (not raw mode) to prevent terminal from displaying input
+    _echo_disabled =
+      case System.cmd("sh", ["-c", "stty -echo 2>/dev/null"], stderr_to_stdout: true) do
+        {_, 0} -> true
+        _ -> false
+      end
+
+    # Check if we successfully entered raw mode for escape sequences
     raw_mode =
-      case System.cmd("sh", ["-c", "stty raw -echo 2>/dev/null"], stderr_to_stdout: true) do
+      case System.cmd("sh", ["-c", "stty raw 2>/dev/null"], stderr_to_stdout: true) do
         {_, 0} -> true
         _ -> false  # Not in raw mode
       end
 
-    # Configure IO options
-    :io.setopts(:standard_io, binary: true, encoding: :latin1)
+    # Configure IO options - disable echo at Erlang level too
+    :io.setopts(:standard_io, binary: true, encoding: :latin1, echo: false)
 
     IO.write("$ ")
 
