@@ -14,9 +14,11 @@ void disable_raw_mode() {
 void enable_raw_mode() {
     if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
         // Not a TTY, skip raw mode
+        fprintf(stderr, "[wrapper] tcgetattr failed - not a TTY\n");
         return;
     }
 
+    fprintf(stderr, "[wrapper] Successfully got terminal attrs, enabling raw mode\n");
     atexit(disable_raw_mode);
 
     struct termios raw = orig_termios;
@@ -27,7 +29,11 @@ void enable_raw_mode() {
     raw.c_cc[VMIN] = 1;
     raw.c_cc[VTIME] = 0;
 
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
+        fprintf(stderr, "[wrapper] tcsetattr failed\n");
+    } else {
+        fprintf(stderr, "[wrapper] Raw mode enabled successfully\n");
+    }
 }
 
 int main(int argc, char *argv[]) {
