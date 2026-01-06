@@ -7,11 +7,12 @@ defmodule CLI do
         _ -> nil  # Not a terminal, can't save settings
       end
 
-    # Set terminal to raw mode if possible
-    case System.cmd("sh", ["-c", "stty raw -echo 2>/dev/null"], stderr_to_stdout: true) do
-      {_, 0} -> :ok
-      _ -> :ok  # Ignore if stty fails (not a terminal)
-    end
+    # Check if we successfully entered raw mode
+    raw_mode =
+      case System.cmd("sh", ["-c", "stty raw -echo 2>/dev/null"], stderr_to_stdout: true) do
+        {_, 0} -> true
+        _ -> false  # Not in raw mode
+      end
 
     # Configure IO options
     :io.setopts(:standard_io, binary: true, encoding: :latin1)
@@ -20,7 +21,7 @@ defmodule CLI do
 
     # Ensure terminal is restored on exit
     try do
-      loop("", [], nil)
+      loop("", [], nil, raw_mode)
     after
       # Restore original terminal settings if we saved them
       if original_settings do
@@ -29,65 +30,67 @@ defmodule CLI do
     end
   end
 
-  defp loop(current, history, cursor) do
-    case IO.getn("", 1) do
+  defp loop(current, history, cursor, raw_mode) do
+    case :file.read(:standard_io, 1) do
+      {:ok, <<ch>>} -> handle_char(ch, current, history, cursor, raw_mode)
+      _ -> loop(current, history, cursor, raw_mode)
+    end
+  end
+
+  defp handle_char(ch, current, history, cursor, raw_mode) do
+    cond do
       # In raw mode, Enter key sends \r (carriage return)
-      char when char == "\n" or char == "\r" ->
-        IO.write("\r\n")  # Move to new line
+      ch == ?\n or ch == ?\r ->
+        if raw_mode, do: IO.write("\r\n")
         cmd = String.trim(current)
 
         if cmd != "" do
           execute_command(cmd)
           IO.write("$ ")
-          loop("", history ++ [cmd], nil)
+          loop("", history ++ [cmd], nil, raw_mode)
         else
           IO.write("$ ")
-          loop("", history, nil)
+          loop("", history, nil, raw_mode)
         end
 
-      <<27>> ->
-        handle_escape(current, history, cursor)
+      ch == 27 ->
+        handle_escape(current, history, cursor, raw_mode)
 
-      <<c>> when c < 32 ->
-        loop(current, history, cursor)
+      ch < 32 ->
+        loop(current, history, cursor, raw_mode)
 
-      <<c>> ->
-        IO.write(<<c>>)  # Echo the character since we're in raw mode
-        loop(current <> <<c>>, history, nil)
-
-      _ ->
-        loop(current, history, cursor)
+      true ->
+        # Only echo if in raw mode (otherwise terminal does it automatically)
+        if raw_mode, do: IO.write(<<ch>>)
+        loop(current <> <<ch>>, history, nil, raw_mode)
     end
   end
 
-  defp handle_escape(current, history, cursor) do
+  defp handle_escape(current, history, cursor, raw_mode) do
     # Read the next byte after ESC
-    byte1 = IO.getn("", 1)
-
-    case byte1 do
-      "[" ->
+    case :file.read(:standard_io, 1) do
+      {:ok, <<91>>} ->  # '[' is 91
         # Read the third byte
-        byte2 = IO.getn("", 1)
-
-        case byte2 do
-          "A" ->
-            handle_up_arrow(current, history, cursor)
+        case :file.read(:standard_io, 1) do
+          {:ok, <<65>>} ->  # 'A' is 65
+            handle_up_arrow(current, history, cursor, raw_mode)
 
           _ ->
             # Unexpected sequence, ignore
-            loop(current, history, cursor)
+            loop(current, history, cursor, raw_mode)
         end
 
       _ ->
         # Not an arrow key sequence, ignore
-        loop(current, history, cursor)
+        loop(current, history, cursor, raw_mode)
     end
   end
 
-  defp handle_up_arrow(current, history, cursor) do
+  defp handle_up_arrow(current, history, cursor, raw_mode) do
     if history == [] do
-      loop(current, history, cursor)
+      loop(current, history, cursor, raw_mode)
     else
+      # Calculate new cursor position
       new_cursor =
         case cursor do
           nil -> length(history) - 1
@@ -98,12 +101,16 @@ defmodule CLI do
       recalled = Enum.at(history, new_cursor)
 
       if recalled do
-        clear_len = String.length(current) + 2
-        IO.write("\r" <> String.duplicate(" ", clear_len) <> "\r")
-        IO.write("$ " <> recalled)
-        loop(recalled, history, new_cursor)
+        # Clear current line: \b \b for each character
+        for _ <- 1..String.length(current) do
+          IO.write("\b \b")
+        end
+
+        # Print the recalled command
+        IO.write(recalled)
+        loop(recalled, history, new_cursor, raw_mode)
       else
-        loop(current, history, cursor)
+        loop(current, history, cursor, raw_mode)
       end
     end
   end
