@@ -148,46 +148,62 @@ defmodule CLI do
   end
 
   defp execute_with_redirect(cmd, _history) do
-    # Parse "command args > file"
-    case String.split(cmd, ">", parts: 2) do
-      [command_part, file_part] ->
-        command_part = String.trim(command_part)
-        file_path = String.trim(file_part)
-
-        # Execute command and capture output
-        case execute_command_for_redirect(command_part) do
-          {:ok, output} ->
-            # Write output to file (overwrite)
-            File.write!(file_path, output)
-
-          {:error, _} ->
-            :ok
+    # Parse "command args > file" or "command args 1> file"
+    {command_part, file_path} =
+      if String.contains?(cmd, "1>") and not String.contains?(cmd, "1>>") do
+        case String.split(cmd, "1>", parts: 2) do
+          [cmd_part, file_part] -> {String.trim(cmd_part), String.trim(file_part)}
+          _ -> {cmd, ""}
         end
+      else
+        case String.split(cmd, ">", parts: 2) do
+          [cmd_part, file_part] -> {String.trim(cmd_part), String.trim(file_part)}
+          _ -> {cmd, ""}
+        end
+      end
 
-      _ ->
-        IO.puts("Invalid redirect syntax")
+    if file_path != "" do
+      # Execute command and capture output
+      case execute_command_for_redirect(command_part) do
+        {:ok, output} ->
+          # Write output to file (overwrite)
+          File.write!(file_path, output)
+
+        {:error, _} ->
+          :ok
+      end
+    else
+      IO.puts("Invalid redirect syntax")
     end
   end
 
   defp execute_with_append_redirect(cmd, _history) do
-    # Parse "command args >> file"
-    case String.split(cmd, ">>", parts: 2) do
-      [command_part, file_part] ->
-        command_part = String.trim(command_part)
-        file_path = String.trim(file_part)
-
-        # Execute command and capture output
-        case execute_command_for_redirect(command_part) do
-          {:ok, output} ->
-            # Append output to file
-            File.write!(file_path, output, [:append])
-
-          {:error, _} ->
-            :ok
+    # Parse "command args >> file" or "command args 1>> file"
+    {command_part, file_path} =
+      if String.contains?(cmd, "1>>") do
+        case String.split(cmd, "1>>", parts: 2) do
+          [cmd_part, file_part] -> {String.trim(cmd_part), String.trim(file_part)}
+          _ -> {cmd, ""}
         end
+      else
+        case String.split(cmd, ">>", parts: 2) do
+          [cmd_part, file_part] -> {String.trim(cmd_part), String.trim(file_part)}
+          _ -> {cmd, ""}
+        end
+      end
 
-      _ ->
-        IO.puts("Invalid redirect syntax")
+    if file_path != "" do
+      # Execute command and capture output
+      case execute_command_for_redirect(command_part) do
+        {:ok, output} ->
+          # Append output to file
+          File.write!(file_path, output, [:append])
+
+        {:error, _} ->
+          :ok
+      end
+    else
+      IO.puts("Invalid redirect syntax")
     end
   end
 
