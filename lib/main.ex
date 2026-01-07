@@ -263,8 +263,10 @@ defmodule CLI do
 
           exec ->
             # Use Port to control argv[0]
+            # The first element in args list becomes argv[0]
             port = Port.open({:spawn_executable, exec}, [
-              {:args, [command | args]},
+              {:args, args},
+              {:arg0, command},
               :binary,
               :exit_status
             ])
@@ -383,7 +385,8 @@ defmodule CLI do
           exec ->
             # Use Port to control argv[0]
             port = Port.open({:spawn_executable, exec}, [
-              {:args, [command | args]},
+              {:args, args},
+              {:arg0, command},
               :binary,
               :exit_status,
               :stderr_to_stdout
