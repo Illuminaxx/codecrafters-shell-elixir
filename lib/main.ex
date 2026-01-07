@@ -257,7 +257,8 @@ defmodule CLI do
 
         {:ok, output <> "\n"}
 
-      [command | args] ->
+      [raw_command | args] ->
+        command = strip_quotes(raw_command)
         case System.find_executable(command) do
           nil ->
             IO.puts("#{command}: command not found")
@@ -308,7 +309,8 @@ defmodule CLI do
 
         :ok
 
-      [command | args] ->
+      [raw_command | args] ->
+        command = strip_quotes(raw_command)
         case System.find_executable(command) do
           nil ->
             IO.puts("#{command}: command not found")
@@ -357,7 +359,8 @@ defmodule CLI do
 
         IO.puts(output)
 
-      [command | args] ->
+      [raw_command | args] ->
+        command = strip_quotes(raw_command)
         case System.find_executable(command) do
           nil ->
             IO.puts("#{command}: command not found")
@@ -512,5 +515,9 @@ defmodule CLI do
       true ->
         IO.puts("#{command}: not found")
     end
+  end
+
+  defp strip_quotes(str) do
+    String.trim(str, "'") |> String.trim("\"")
   end
 end
