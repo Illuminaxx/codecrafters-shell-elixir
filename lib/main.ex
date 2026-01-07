@@ -284,7 +284,7 @@ defmodule CLI do
     # Use shell redirection to capture stderr
     case String.split(cmd) do
       ["echo" | rest] ->
-        # Echo is a builtin - just print to stdout (stderr redirection has no effect)
+        # Echo is a builtin - print to stdout, stderr redirection creates/touches file
         # Strip surrounding quotes from arguments
         output = rest
         |> Enum.map(fn arg ->
@@ -294,6 +294,18 @@ defmodule CLI do
         |> Enum.join(" ")
 
         IO.puts(output)
+
+        # Create/touch the file for stderr redirection (echo produces no stderr)
+        if append do
+          # For 2>>: Create empty file if doesn't exist, or don't modify if exists
+          unless File.exists?(file_path) do
+            File.write!(file_path, "")
+          end
+        else
+          # For 2>: Create empty file (truncate if exists)
+          File.write!(file_path, "")
+        end
+
         :ok
 
       [command | args] ->
