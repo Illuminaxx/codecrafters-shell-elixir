@@ -262,14 +262,15 @@ defmodule CLI do
             {:error, :not_found}
 
           exec ->
-            # Don't merge stderr with stdout - let stderr go to terminal
-            {out, exit_code} = System.cmd(exec, args, stderr_to_stdout: false)
-            if exit_code == 0 do
-              {:ok, out}
-            else
-              # Command failed but stderr was already printed to terminal
-              {:ok, out}
-            end
+            # Use Port to control argv[0]
+            port = Port.open({:spawn_executable, exec}, [
+              {:args, [command | args]},
+              :binary,
+              :exit_status
+            ])
+
+            out = collect_port_output(port)
+            {:ok, out}
         end
 
       [] ->
@@ -380,9 +381,17 @@ defmodule CLI do
             IO.puts("#{command}: command not found")
 
           exec ->
-            {out, _} = System.cmd(exec, args, stderr_to_stdout: true)
-            IO.write(out)
-            unless String.ends_with?(out, "\n") do
+            # Use Port to control argv[0]
+            port = Port.open({:spawn_executable, exec}, [
+              {:args, [command | args]},
+              :binary,
+              :exit_status,
+              :stderr_to_stdout
+            ])
+
+            output = collect_port_output(port)
+            IO.write(output)
+            unless String.ends_with?(output, "\n") do
               IO.write("\n")
             end
         end
@@ -502,6 +511,19 @@ defmodule CLI do
         flush_pipeline_data(port, acc <> data)
     after
       0 -> acc
+    end
+  end
+
+  defp collect_port_output(port) do
+    collect_port_output(port, "")
+  end
+
+  defp collect_port_output(port, acc) do
+    receive do
+      {^port, {:data, data}} ->
+        collect_port_output(port, acc <> data)
+      {^port, {:exit_status, _}} ->
+        acc
     end
   end
 
