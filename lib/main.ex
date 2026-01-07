@@ -74,6 +74,9 @@ defmodule CLI do
           <<65>> ->  # 'A' is 65 - UP ARROW
             handle_up_arrow(current, history, cursor)
 
+          <<66>> ->  # 'B' is 66 - DOWN ARROW
+            handle_down_arrow(current, history, cursor)
+
           _ ->
             loop(current, history, cursor)
         end
@@ -114,6 +117,45 @@ defmodule CLI do
       else
         loop(current, history, cursor)
       end
+    end
+  end
+
+  defp handle_down_arrow(current, history, cursor) do
+    if history == [] or cursor == nil do
+      # No history or not navigating history - stay on current line
+      loop(current, history, cursor)
+    else
+      # Calculate new cursor position (move forward in history)
+      new_cursor =
+        if cursor >= length(history) - 1 do
+          # Already at the newest command - clear to empty line
+          nil
+        else
+          cursor + 1
+        end
+
+      # Get the command at the new position or empty string if nil
+      recalled =
+        case new_cursor do
+          nil -> ""
+          n -> Enum.at(history, n)
+        end
+
+      # Clear current line
+      current_len = String.length(current)
+      if current_len > 0 do
+        for _ <- 1..current_len do
+          IO.write(:standard_error, "\b \b")
+        end
+      end
+
+      # Write recalled command (or nothing if empty)
+      if recalled != "" do
+        IO.write(:standard_error, recalled)
+      end
+
+      # Continue loop with recalled command
+      loop(recalled, history, new_cursor)
     end
   end
 
