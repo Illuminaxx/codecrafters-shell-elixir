@@ -586,6 +586,19 @@ defmodule CLI do
   end
 
   defp strip_quotes(str) do
-    String.trim(str, "'") |> String.trim("\"")
+    # Only strip matching outer quotes, not internal quotes
+    cond do
+      # String wrapped in single quotes
+      String.starts_with?(str, "'") and String.ends_with?(str, "'") and String.length(str) >= 2 ->
+        String.slice(str, 1..-2//1)
+
+      # String wrapped in double quotes
+      String.starts_with?(str, "\"") and String.ends_with?(str, "\"") and String.length(str) >= 2 ->
+        String.slice(str, 1..-2//1)
+
+      # No quotes to strip
+      true ->
+        str
+    end
   end
 end
