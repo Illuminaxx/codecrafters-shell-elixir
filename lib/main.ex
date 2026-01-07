@@ -49,6 +49,10 @@ defmodule CLI do
       ch == 27 ->
         handle_escape(current, history, cursor)
 
+      # TAB - autocomplete
+      ch == ?\t ->
+        handle_tab(current, history, cursor)
+
       # Other control characters - ignore
       ch < 32 ->
         loop(current, history, cursor)
@@ -156,6 +160,39 @@ defmodule CLI do
 
       # Continue loop with recalled command
       loop(recalled, history, new_cursor)
+    end
+  end
+
+  defp handle_tab(current, history, cursor) do
+    # List of builtin commands
+    builtins = ["exit", "echo", "type", "pwd", "cd", "history"]
+
+    # Find matching builtins
+    matches = Enum.filter(builtins, fn cmd -> String.starts_with?(cmd, current) end)
+
+    case matches do
+      [single_match] ->
+        # Only one match - autocomplete it
+        completion = single_match
+
+        # Clear current line
+        current_len = String.length(current)
+        if current_len > 0 do
+          for _ <- 1..current_len do
+            IO.write(:standard_error, "\b \b")
+          end
+        end
+
+        # Write completed command with space
+        completed = completion <> " "
+        IO.write(:standard_error, completed)
+
+        # Continue with completed command
+        loop(completed, history, nil)
+
+      _ ->
+        # No match or multiple matches - do nothing for now
+        loop(current, history, cursor)
     end
   end
 
