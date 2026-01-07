@@ -163,6 +163,9 @@ defmodule CLI do
     end
   end
 
+  # TAB completion with argument support
+  # When a command is completed, adds a trailing space so user can type arguments
+  # Example: "ech" + TAB → "echo " → user types "hello" → "echo hello"
   defp handle_tab(current, history, cursor) do
     # List of builtin commands
     builtins = ["exit", "echo", "type", "pwd", "cd", "history"]
