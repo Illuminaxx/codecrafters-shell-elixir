@@ -247,12 +247,9 @@ defmodule CLI do
     # Execute command and return output
     case parse_arguments(cmd) do
       ["echo" | rest] ->
-        # Strip surrounding quotes from arguments
+        # Strip surrounding quotes from arguments (only outer quotes)
         output = rest
-        |> Enum.map(fn arg ->
-          String.trim(arg, "\"")
-          |> String.trim("'")
-        end)
+        |> Enum.map(&strip_quotes/1)
         |> Enum.join(" ")
 
         {:ok, output <> "\n"}
@@ -286,12 +283,9 @@ defmodule CLI do
     case parse_arguments(cmd) do
       ["echo" | rest] ->
         # Echo is a builtin - print to stdout, stderr redirection creates/touches file
-        # Strip surrounding quotes from arguments
+        # Strip surrounding quotes from arguments (only outer quotes)
         output = rest
-        |> Enum.map(fn arg ->
-          String.trim(arg, "\"")
-          |> String.trim("'")
-        end)
+        |> Enum.map(&strip_quotes/1)
         |> Enum.join(" ")
 
         IO.puts(output)
@@ -349,12 +343,9 @@ defmodule CLI do
         end
 
       ["echo" | rest] ->
-        # Strip surrounding quotes from arguments
+        # Strip surrounding quotes from arguments (only outer quotes)
         output = rest
-        |> Enum.map(fn arg ->
-          String.trim(arg, "\"")
-          |> String.trim("'")
-        end)
+        |> Enum.map(&strip_quotes/1)
         |> Enum.join(" ")
 
         IO.puts(output)
