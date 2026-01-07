@@ -342,6 +342,29 @@ defmodule CLI do
           _ -> IO.puts("history: #{n_str}: numeric argument required")
         end
 
+      ["cd"] ->
+        # cd with no arguments goes to home directory
+        home = System.get_env("HOME") || System.get_env("USERPROFILE") || "~"
+        case File.cd(home) do
+          :ok -> :ok
+          {:error, _} -> IO.puts("cd: #{home}: No such file or directory")
+        end
+
+      ["cd", path] ->
+        # cd with a path argument
+        # Handle ~ expansion
+        expanded_path = if String.starts_with?(path, "~") do
+          home = System.get_env("HOME") || System.get_env("USERPROFILE") || "~"
+          String.replace_prefix(path, "~", home)
+        else
+          path
+        end
+
+        case File.cd(expanded_path) do
+          :ok -> :ok
+          {:error, _} -> IO.puts("cd: #{expanded_path}: No such file or directory")
+        end
+
       ["echo" | rest] ->
         # Strip surrounding quotes from arguments (only outer quotes)
         output = rest
