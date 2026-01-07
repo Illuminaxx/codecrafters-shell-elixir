@@ -318,7 +318,10 @@ defmodule CLI do
             # Use shell to handle stderr redirection
             redirect_op = if append, do: "2>>", else: "2>"
             shell_cmd = "#{exec} #{Enum.join(args, " ")} #{redirect_op} #{file_path}"
-            System.cmd("sh", ["-c", shell_cmd])
+            {output, _exit_code} = System.cmd("sh", ["-c", shell_cmd])
+
+            # Display stdout (stderr is already redirected to file by shell)
+            IO.write(output)
             :ok
         end
 
