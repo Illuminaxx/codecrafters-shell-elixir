@@ -245,7 +245,7 @@ defmodule CLI do
 
   defp execute_command_for_redirect(cmd) do
     # Execute command and return output
-    case String.split(cmd) do
+    case parse_arguments(cmd) do
       ["echo" | rest] ->
         # Strip surrounding quotes from arguments
         output = rest
@@ -283,7 +283,7 @@ defmodule CLI do
   defp execute_command_for_stderr_redirect(cmd, file_path, append) do
     # Execute command and redirect stderr to file
     # Use shell redirection to capture stderr
-    case String.split(cmd) do
+    case parse_arguments(cmd) do
       ["echo" | rest] ->
         # Echo is a builtin - print to stdout, stderr redirection creates/touches file
         # Strip surrounding quotes from arguments
@@ -333,7 +333,7 @@ defmodule CLI do
   end
 
   defp execute_single_command(cmd, history) do
-    case String.split(cmd) do
+    case parse_arguments(cmd) do
       ["type", command] ->
         execute_type(command)
 
@@ -515,6 +515,74 @@ defmodule CLI do
       true ->
         IO.puts("#{command}: not found")
     end
+  end
+
+  defp parse_arguments(input) do
+    do_parse(String.trim(input), [], "", :normal)
+  end
+
+  defp do_parse(<<>>, acc, current, _mode) do
+    if current == "", do: acc, else: acc ++ [current]
+  end
+
+  # Backslash in normal mode - escape next char
+  defp do_parse(<<"\\", c, rest::binary>>, acc, current, :normal) do
+    do_parse(rest, acc, current <> <<c>>, :normal)
+  end
+
+  # Single quotes - enter single quote mode
+  defp do_parse(<<"'", rest::binary>>, acc, current, :normal) do
+    do_parse(rest, acc, current, :single)
+  end
+
+  # Exit single quote mode
+  defp do_parse(<<"'", rest::binary>>, acc, current, :single) do
+    do_parse(rest, acc, current, :normal)
+  end
+
+  # Inside single quotes - all chars literal
+  defp do_parse(<<c, rest::binary>>, acc, current, :single) do
+    do_parse(rest, acc, current <> <<c>>, :single)
+  end
+
+  # Double quotes - enter double quote mode
+  defp do_parse(<<"\"", rest::binary>>, acc, current, :normal) do
+    do_parse(rest, acc, current, :double)
+  end
+
+  # Exit double quote mode
+  defp do_parse(<<"\"", rest::binary>>, acc, current, :double) do
+    do_parse(rest, acc, current, :normal)
+  end
+
+  # Special escaping in double quotes (\" and \\)
+  defp do_parse(<<"\\", char, rest::binary>>, acc, current, :double)
+       when char in [?", ?\\] do
+    do_parse(rest, acc, current <> <<char>>, :double)
+  end
+
+  # Other backslashes in double quotes are literal
+  defp do_parse(<<"\\", char, rest::binary>>, acc, current, :double) do
+    do_parse(rest, acc, current <> <<?\\, char>>, :double)
+  end
+
+  # Inside double quotes - accumulate characters
+  defp do_parse(<<char, rest::binary>>, acc, current, :double) do
+    do_parse(rest, acc, current <> <<char>>, :double)
+  end
+
+  # Spaces in normal mode - token boundary
+  defp do_parse(<<" ", rest::binary>>, acc, current, :normal) do
+    if current == "" do
+      do_parse(rest, acc, "", :normal)
+    else
+      do_parse(rest, acc ++ [current], "", :normal)
+    end
+  end
+
+  # Normal characters
+  defp do_parse(<<char, rest::binary>>, acc, current, :normal) do
+    do_parse(rest, acc, current <> <<char>>, :normal)
   end
 
   defp strip_quotes(str) do
