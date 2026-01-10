@@ -176,21 +176,14 @@ defmodule CLI do
     case matches do
       [single_match] ->
         # Only one match - autocomplete it
-        completion = single_match
+        # Calculate the suffix (what needs to be added)
+        suffix = String.slice(single_match, String.length(current)..-1//1)
 
-        # Clear current line
-        current_len = String.length(current)
-        if current_len > 0 do
-          for _ <- 1..current_len do
-            IO.write(:standard_io, "\b \b")
-          end
-        end
-
-        # Write completed command with space
-        completed = completion <> " "
-        IO.write(:standard_io, completed)
+        # Write suffix + space (no need to clear and rewrite)
+        IO.write(:standard_io, suffix <> " ")
 
         # Continue with completed command
+        completed = single_match <> " "
         loop(completed, history, nil)
 
       _ ->
