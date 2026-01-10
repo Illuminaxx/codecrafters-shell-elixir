@@ -142,7 +142,7 @@ defmodule CLI do
       recalled =
         case new_cursor do
           nil -> ""
-          n -> Enum.at(history, n)
+          n -> Enum.at(history, n) || ""
         end
 
       # Clear current line
