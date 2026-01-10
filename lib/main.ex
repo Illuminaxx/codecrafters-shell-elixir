@@ -3,9 +3,9 @@ defmodule CLI do
     # Configure IO for binary input
     :io.setopts(:standard_io, binary: true, encoding: :latin1)
 
-    # Write prompt to stderr (Unix convention)
-    IO.write(:standard_error, "$ ")
-    :io.put_chars(:standard_error, [])
+    # Write prompt to stdout with explicit flush
+    IO.write(:standard_io, "$ ")
+    :io.put_chars(:standard_io, [])
 
     loop("", [], nil)
   end
@@ -39,12 +39,12 @@ defmodule CLI do
           # Add to history first, then execute
           new_history = history ++ [cmd]
           execute_command(cmd, new_history)
-          IO.write(:standard_error, "$ ")
-          :io.put_chars(:standard_error, [])
+          IO.write(:standard_io, "$ ")
+          :io.put_chars(:standard_io, [])
           loop("", new_history, nil)
         else
-          IO.write(:standard_error, "$ ")
-          :io.put_chars(:standard_error, [])
+          IO.write(:standard_io, "$ ")
+          :io.put_chars(:standard_io, [])
           loop("", history, nil)
         end
 
@@ -112,12 +112,12 @@ defmodule CLI do
         current_len = String.length(current)
         if current_len > 0 do
           for _ <- 1..current_len do
-            IO.write(:standard_error, "\b \b")
+            IO.write(:standard_io, "\b \b")
           end
         end
 
         # Write recalled command
-        IO.write(:standard_error, recalled)
+        IO.write(:standard_io, recalled)
 
         # Continue loop with recalled command
         loop(recalled, history, new_cursor)
@@ -152,13 +152,13 @@ defmodule CLI do
       current_len = String.length(current)
       if current_len > 0 do
         for _ <- 1..current_len do
-          IO.write(:standard_error, "\b \b")
+          IO.write(:standard_io, "\b \b")
         end
       end
 
       # Write recalled command (or nothing if empty)
       if recalled != "" do
-        IO.write(:standard_error, recalled)
+        IO.write(:standard_io, recalled)
       end
 
       # Continue loop with recalled command
@@ -185,13 +185,13 @@ defmodule CLI do
         current_len = String.length(current)
         if current_len > 0 do
           for _ <- 1..current_len do
-            IO.write(:standard_error, "\b \b")
+            IO.write(:standard_io, "\b \b")
           end
         end
 
         # Write completed command with space
         completed = completion <> " "
-        IO.write(:standard_error, completed)
+        IO.write(:standard_io, completed)
 
         # Continue with completed command
         loop(completed, history, nil)
