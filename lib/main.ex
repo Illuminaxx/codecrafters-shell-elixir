@@ -3,9 +3,8 @@ defmodule CLI do
     # Configure IO for binary input
     :io.setopts(:standard_io, binary: true, encoding: :latin1)
 
-    # Write prompt to stdout with explicit flush
-    IO.write(:standard_io, "$ ")
-    :io.put_chars(:standard_io, [])
+    # Write prompt to stdout
+    IO.write("$ ")
 
     loop("", [], nil)
   end
@@ -39,12 +38,10 @@ defmodule CLI do
           # Add to history first, then execute
           new_history = history ++ [cmd]
           execute_command(cmd, new_history)
-          IO.write(:standard_io, "$ ")
-          :io.put_chars(:standard_io, [])
+          IO.write("$ ")
           loop("", new_history, nil)
         else
-          IO.write(:standard_io, "$ ")
-          :io.put_chars(:standard_io, [])
+          IO.write("$ ")
           loop("", history, nil)
         end
 
