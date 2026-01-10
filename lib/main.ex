@@ -3,7 +3,7 @@ defmodule CLI do
     # Configure IO for binary input
     :io.setopts(:standard_io, binary: true, encoding: :latin1)
 
-    # Write prompt to stdout
+    # Display initial prompt
     IO.write("$ ")
 
     loop("", [], nil)
